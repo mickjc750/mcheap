@@ -6,14 +6,43 @@
 // Public defines
 //********************************************************************************************************
 
+//	Provide formatted printing to a heap allocation, requires the prnf module
+//	For cross platform compatibility with AVR use:
+//	heap_prnf_SL("FORMAT", args...);
+//
+	#define HEAP_PROVIDE_PRNF
+
 //	If defined heap allocations will include file+line info
-//	Source files must define FILE_ENUM with an identifying value 0-255
+//	Source files must define FILE_ENUM with an identifying value 0-255 by including file_enum.h
 	#define HEAP_ID_SECTIONS
 
 	#ifdef HEAP_ID_SECTIONS
 		#define		heap_allocate(arg1)			heap_allocate_id((arg1), FILE_ENUM, __LINE__)
 		#define		heap_reallocate(arg1, arg2)	heap_reallocate_id((arg1), (arg2), FILE_ENUM, __LINE__)
 		#define		heap_free(arg1)				heap_free_id((arg1), FILE_ENUM, __LINE__)
+	#endif
+
+	#ifdef HEAP_PROVIDE_PRNF
+		#ifdef PLATFORM_AVR
+			static inline void heap_fmttst(const char* fmt, ...) __attribute__((format(printf, 1, 2)));
+			static inline void heap_fmttst(const char* fmt, ...) {}
+		#endif
+
+		#ifdef HEAP_ID_SECTIONS
+			#define heap_prnf(_fmtarg, ...) 	heap_prnf_id(FILE_ENUM, __LINE__, _fmtarg ,##__VA_ARGS__)
+			#ifdef PLATFORM_AVR
+				#define heap_prnf_P(_fmtarg, ...) 	heap_prnf_P_id(FILE_ENUM, __LINE__, _fmtarg ,##__VA_ARGS__)
+				#define heap_prnf_SL(_fmtarg, ...) 	({char* _prv; _prv = heap_prnf_P_id(FILE_ENUM, __LINE__, PSTR(_fmtarg) ,##__VA_ARGS__); while(0) heap_fmttst(_fmtarg ,##__VA_ARGS__); _prv;})
+			#else
+				#define heap_prnf_SL(_fmtarg, ...) 	heap_prnf_id(FILE_ENUM, __LINE__, _fmtarg ,##__VA_ARGS__)
+			#endif
+		#else
+			#ifdef PLATFORM_AVR
+				#define heap_prnf_SL(_fmtarg, ...) 	({char* _prv; _prv = heap_prnf_P(PSTR(_fmtarg) ,##__VA_ARGS__); while(0) heap_fmttst(_fmtarg ,##__VA_ARGS__); _prv;})
+			#else
+				#define heap_prnf_SL(_fmtarg, ...) 	heap_prnf(_fmtarg ,##__VA_ARGS__)
+			#endif
+		#endif
 	#endif
 
 	struct heap_leakid_struct
@@ -54,6 +83,22 @@
 		void*	heap_reallocate(void* org_section, size_t size);
 		void*	heap_free(void* address);
 	#endif
+
+
+	#ifdef HEAP_PROVIDE_PRNF
+		#ifdef HEAP_ID_SECTIONS
+			#ifdef PLATFORM_AVR
+				char* heap_prnf_P_id(uint8_t id_file, uint16_t id_line, PGM_P fmt, ...);
+			#endif
+			char* heap_prnf_id(uint8_t id_file, uint16_t id_line, const char* fmt, ...) __attribute__((format(printf, 3, 4)));
+		#else
+			#ifdef PLATFORM_AVR
+				char* heap_prnf_P(PGM_P fmt, ...);
+			#endif
+			char* heap_prnf(const char* fmt, ...) __attribute__((format(printf, 1, 2)));
+		#endif
+	#endif
+
 
 	//return true if address is within heap space
 	bool		heap_contains(void* address);

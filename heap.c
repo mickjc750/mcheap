@@ -30,7 +30,7 @@
 //	If defined, insert key values at the start of each section (both free and allocated) for integrity checking.
 //	Key value will be .size ^ KEY_USED/KEY_FREE
 //	The keys will only be tested if TEST_HEAP is defined
-//	#define USE_KEYS
+	#define USE_KEYS
 
 //	Heap size
 	#define	HEAP_SIZE	1000
@@ -60,13 +60,19 @@
 	ERROR_BROKEN()
 */
 
+	#ifdef PLATFORM_AVR
+		#define SLMEM(arg)	PSTR(arg)
+	#else
+		#define SLMEM(arg)	(arg)
+	#endif
+
 	#ifdef HEAP_ID_SECTIONS
-		#define ERROR_ALLOCATION_FAIL()	assert_handle(heap_id_file, "", heap_id_line)
-		#define ERROR_REALLOC_FAIL()	assert_handle(heap_id_file, "", heap_id_line)
-		#define ERROR_FREE_STATIC()		assert_handle(heap_id_file, "", heap_id_line)
-		#define ERROR_REALLOC_STATIC()	assert_handle(heap_id_file, "", heap_id_line)
-		#define ERROR_FALSE_FREE()		assert_handle(heap_id_file, "", heap_id_line)
-		#define ERROR_BROKEN()			assert_handle(heap_id_file, "", heap_id_line)
+		#define ERROR_ALLOCATION_FAIL()	assert_handle(heap_id_file, SLMEM("heap-1"), heap_id_line)
+		#define ERROR_REALLOC_FAIL()	assert_handle(heap_id_file, SLMEM("heap-2"), heap_id_line)
+		#define ERROR_FREE_STATIC()		assert_handle(heap_id_file, SLMEM("heap-3"), heap_id_line)
+		#define ERROR_REALLOC_STATIC()	assert_handle(heap_id_file, SLMEM("heap-4"), heap_id_line)
+		#define ERROR_FALSE_FREE()		assert_handle(heap_id_file, SLMEM("heap-5"), heap_id_line)
+		#define ERROR_BROKEN()			assert_handle(heap_id_file, SLMEM("heap-6"), heap_id_line)
 	#else
 		#define ERROR_ALLOCATION_FAIL()	ASSERT(false)
 		#define ERROR_REALLOC_FAIL()	ASSERT(false)
@@ -380,9 +386,6 @@ void* heap_reallocate(void* section, size_t new_size)
 		heap_id_line = id_line;
 	#endif
 
-	if(!heap_contains(section))
-		ERROR_REALLOC_STATIC();
-
 	if(section == NULL)
 	{
 		#ifdef HEAP_ID_SECTIONS
@@ -393,6 +396,9 @@ void* heap_reallocate(void* section, size_t new_size)
 	}
 	else
 	{
+		if(!heap_contains(section))
+			ERROR_REALLOC_STATIC();
+
 		// align size
 		if(new_size & (ALIGNMENT-1))
 			new_size += ALIGNMENT;
@@ -597,6 +603,63 @@ struct heap_leakid_struct heap_find_leak(void)
 
 	return record;
 }
+#endif
+
+
+#ifdef HEAP_PROVIDE_PRNF
+#ifdef HEAP_ID_SECTIONS
+char* heap_prnf_id(uint8_t id_file, uint16_t id_line, const char* fmt, ...)
+#else
+char* heap_prnf(const char* fmt, ...)
+#endif
+{
+	va_list va;
+	va_start(va, fmt);
+	int 	size;
+	char* 	result;
+
+	size = vsnprnf(NULL, 0, fmt, va)+1;
+
+	#ifdef HEAP_ID_SECTIONS
+		result = heap_allocate_id(size, id_file, id_line);
+	#else
+		result = heap_allocate(size);
+	#endif
+
+	if(result)
+		vsprnf(result, fmt, va);
+
+	va_end(va);
+	return result;
+};
+
+#ifdef PLATFORM_AVR
+#ifdef HEAP_ID_SECTIONS
+char* heap_prnf_P_id(uint8_t id_file, uint16_t id_line, PGM_P fmt, ...)
+#else
+char* heap_prnf_P(PGM_P fmt, ...)
+#endif
+{
+	va_list va;
+	va_start(va, fmt);
+	int 	size;
+	char* 	result;
+
+	size = vsnprnf_P(NULL, 0, fmt, va)+1;
+
+	#ifdef HEAP_ID_SECTIONS
+		result = heap_allocate_id(size, id_file, id_line);
+	#else
+		result = heap_allocate(size);
+	#endif
+
+	if(result)
+		vsprnf_P(result, fmt, va);
+
+	va_end(va);
+	return result;
+};
+#endif
 #endif
 
 //********************************************************************************************************

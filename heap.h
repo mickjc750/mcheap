@@ -17,9 +17,9 @@
 	#define HEAP_ID_SECTIONS
 
 	#ifdef HEAP_ID_SECTIONS
-		#define		heap_allocate(arg1)			heap_allocate_id((arg1), FILE_ENUM, __LINE__)
-		#define		heap_reallocate(arg1, arg2)	heap_reallocate_id((arg1), (arg2), FILE_ENUM, __LINE__)
-		#define		heap_free(arg1)				heap_free_id((arg1), FILE_ENUM, __LINE__)
+		#define		heap_allocate(arg1)			heap_allocate_id((arg1), __FILE__, __LINE__)
+		#define		heap_reallocate(arg1, arg2)	heap_reallocate_id((arg1), (arg2), __FILE__, __LINE__)
+		#define		heap_free(arg1)				heap_free_id((arg1), __FILE__, __LINE__)
 	#endif
 
 	#ifdef HEAP_PROVIDE_PRNF
@@ -29,12 +29,12 @@
 		#endif
 
 		#ifdef HEAP_ID_SECTIONS
-			#define heap_prnf(_fmtarg, ...) 	heap_prnf_id(FILE_ENUM, __LINE__, _fmtarg ,##__VA_ARGS__)
+			#define heap_prnf(_fmtarg, ...) 	heap_prnf_id(__FILE__, __LINE__, _fmtarg ,##__VA_ARGS__)
 			#ifdef PLATFORM_AVR
-				#define heap_prnf_P(_fmtarg, ...) 	heap_prnf_P_id(FILE_ENUM, __LINE__, _fmtarg ,##__VA_ARGS__)
-				#define heap_prnf_SL(_fmtarg, ...) 	({char* _prv; _prv = heap_prnf_P_id(FILE_ENUM, __LINE__, PSTR(_fmtarg) ,##__VA_ARGS__); while(0) heap_fmttst(_fmtarg ,##__VA_ARGS__); _prv;})
+				#define heap_prnf_P(_fmtarg, ...) 	heap_prnf_P_id(__FILE__, __LINE__, _fmtarg ,##__VA_ARGS__)
+				#define heap_prnf_SL(_fmtarg, ...) 	({char* _prv; _prv = heap_prnf_P_id(__FILE__, __LINE__, PSTR(_fmtarg) ,##__VA_ARGS__); while(0) heap_fmttst(_fmtarg ,##__VA_ARGS__); _prv;})
 			#else
-				#define heap_prnf_SL(_fmtarg, ...) 	heap_prnf_id(FILE_ENUM, __LINE__, _fmtarg ,##__VA_ARGS__)
+				#define heap_prnf_SL(_fmtarg, ...) 	heap_prnf_id(__FILE__, __LINE__, _fmtarg ,##__VA_ARGS__)
 			#endif
 		#else
 			#ifdef PLATFORM_AVR
@@ -47,7 +47,7 @@
 
 	struct heap_leakid_struct
 	{
-		uint8_t		file_id;
+		const char* file_id;
 		uint16_t	line_id;
 		uint32_t	cnt;
 	};
@@ -75,9 +75,9 @@
 	void 		heap_init(void);
 
 	#ifdef	HEAP_ID_SECTIONS
-		void*	heap_allocate_id(size_t size, uint8_t id_file, uint16_t id_line);
-		void*	heap_reallocate_id(void* org_section, size_t size, uint8_t id_file, uint16_t id_line);
-		void*	heap_free_id(void* address, uint8_t id_file, uint16_t id_line);
+		void*	heap_allocate_id(size_t size, const char* id_file, uint16_t id_line);
+		void*	heap_reallocate_id(void* org_section, size_t size, const char* id_file, uint16_t id_line);
+		void*	heap_free_id(void* address, const char* id_file, uint16_t id_line);
 	#else
 		void*	heap_allocate(size_t size);
 		void*	heap_reallocate(void* org_section, size_t size);
@@ -88,9 +88,9 @@
 	#ifdef HEAP_PROVIDE_PRNF
 		#ifdef HEAP_ID_SECTIONS
 			#ifdef PLATFORM_AVR
-				char* heap_prnf_P_id(uint8_t id_file, uint16_t id_line, PGM_P fmt, ...);
+				char* heap_prnf_P_id(PGM_P id_file, uint16_t id_line, PGM_P fmt, ...);
 			#endif
-			char* heap_prnf_id(uint8_t id_file, uint16_t id_line, const char* fmt, ...) __attribute__((format(printf, 3, 4)));
+			char* heap_prnf_id(const char* id_file, uint16_t id_line, const char* fmt, ...) __attribute__((format(printf, 3, 4)));
 		#else
 			#ifdef PLATFORM_AVR
 				char* heap_prnf_P(PGM_P fmt, ...);
@@ -99,9 +99,8 @@
 		#endif
 	#endif
 
-
 	//return true if address is within heap space
-	bool		heap_contains(void* address);
+	bool	heap_contains(void* address);
 
 	//return id of the caller which currently has the most alloactions in the heap
 	//requires HEAP_ID_SECTIONS, otherwise returns 0,0,0

@@ -33,7 +33,7 @@
 	#define USE_KEYS
 
 //	Heap size
-	#define	HEAP_SIZE	2000
+	#define	HEAP_SIZE	1000
 
 /*
 	If HEAP_ID_SECTIONS is defined, heap_id_file and heap_id_line (caller ID) will be available in all the below macros
@@ -67,19 +67,19 @@
 	#endif
 
 	#ifdef HEAP_ID_SECTIONS
-		#define ERROR_ALLOCATION_FAIL()	assert_handle(heap_id_file, SLMEM("heap-1"), heap_id_line)
-		#define ERROR_REALLOC_FAIL()	assert_handle(heap_id_file, SLMEM("heap-2"), heap_id_line)
-		#define ERROR_FREE_STATIC()		assert_handle(heap_id_file, SLMEM("heap-3"), heap_id_line)
-		#define ERROR_REALLOC_STATIC()	assert_handle(heap_id_file, SLMEM("heap-4"), heap_id_line)
-		#define ERROR_FALSE_FREE()		assert_handle(heap_id_file, SLMEM("heap-5"), heap_id_line)
-		#define ERROR_BROKEN()			assert_handle(heap_id_file, SLMEM("heap-6"), heap_id_line)
+		#define ERROR_ALLOCATION_FAIL()	assert_handle(heap_id_file, heap_id_line, SLMEM("heap-fail-alloc"))
+		#define ERROR_REALLOC_FAIL()	assert_handle(heap_id_file, heap_id_line, SLMEM("heap-fail-realloc"))
+		#define ERROR_FREE_STATIC()		assert_handle(heap_id_file, heap_id_line, SLMEM("heap-free-static"))
+		#define ERROR_REALLOC_STATIC()	assert_handle(heap_id_file, heap_id_line, SLMEM("heap-realloc-static"))
+		#define ERROR_FALSE_FREE()		assert_handle(heap_id_file, heap_id_line, SLMEM("heap-false-free"))
+		#define ERROR_BROKEN()			assert_handle(heap_id_file, heap_id_line, SLMEM("heap-broken"))
 	#else
-		#define ERROR_ALLOCATION_FAIL()	ASSERT(false)
-		#define ERROR_REALLOC_FAIL()	ASSERT(false)
-		#define ERROR_FREE_STATIC()		ASSERT(false)
-		#define ERROR_REALLOC_STATIC()	ASSERT(false)
-		#define ERROR_FALSE_FREE()		ASSERT(false)
-		#define ERROR_BROKEN()			ASSERT(false)
+		#define ERROR_ALLOCATION_FAIL()	ASSERT_MSG_SL(false, "heap-fail-alloc")
+		#define ERROR_REALLOC_FAIL()	ASSERT_MSG_SL(false, "heap-fail-realloc")
+		#define ERROR_FREE_STATIC()		ASSERT_MSG_SL(false, "heap-free-static")
+		#define ERROR_REALLOC_STATIC()	ASSERT_MSG_SL(false, "heap-realloc-static")
+		#define ERROR_FALSE_FREE()		ASSERT_MSG_SL(false, "heap-false-free")
+		#define ERROR_BROKEN()			ASSERT_MSG_SL(false, "heap-broken")
 	#endif
 
 //********************************************************************************************************
@@ -106,7 +106,7 @@
 	#endif
 		size_t				size;		// size of empty content[] following this structure &content[size] will address the next used_struct/free_struct
 	#ifdef HEAP_ID_SECTIONS
-		uint8_t				id_file;	// file that freed this allocation
+		const char*			id_file;	// file that freed this allocation
 		uint16_t			id_line;	// line number of file that freed this allocation
 	#endif
 		struct free_struct*	next_ptr;	// next free
@@ -122,7 +122,7 @@
 	#endif
 		size_t		size;				// size of content[] following this structure &content[size] will address the next used_struct/free_struct
 	#ifdef HEAP_ID_SECTIONS
-		uint8_t		id_file;			// file that made this allocation
+		const char*	id_file;			// file that made this allocation
 		uint16_t	id_line;			// line number of file that made this allocation
 	#endif
 		//(insert extras here if desired)
@@ -186,7 +186,7 @@
 	static struct free_struct* 	first_free = (void*)heap_space;	//head of the free list
 
 	#ifdef HEAP_ID_SECTIONS
-		static uint8_t			heap_id_file;
+		static const char*		heap_id_file;
 		static uint16_t			heap_id_line;
 	#endif
 
@@ -311,7 +311,7 @@ void heap_init(void)
 }
 
 #ifdef HEAP_ID_SECTIONS
-void* heap_allocate_id(size_t size, uint8_t id_file, uint16_t id_line)
+void* heap_allocate_id(size_t size, const char* id_file, uint16_t id_line)
 #else
 void* heap_allocate(size_t size)
 #endif
@@ -370,7 +370,7 @@ void* heap_allocate(size_t size)
 // 	Heap reallocate
 //
 #ifdef HEAP_ID_SECTIONS
-void* heap_reallocate_id(void* section, size_t new_size, uint8_t id_file, uint16_t id_line)
+void* heap_reallocate_id(void* section, size_t new_size, const char* id_file, uint16_t id_line)
 #else
 void* heap_reallocate(void* section, size_t new_size)
 #endif
@@ -497,7 +497,7 @@ void* heap_reallocate(void* section, size_t new_size)
 }
 
 #ifdef HEAP_ID_SECTIONS
-void* heap_free_id(void* section, uint8_t id_file, uint16_t id_line)
+void* heap_free_id(void* section, const char* id_file, uint16_t id_line)
 #else
 void* heap_free(void* section)
 #endif
@@ -556,11 +556,11 @@ bool heap_contains(void* section)
 #ifdef HEAP_ID_SECTIONS
 struct heap_leakid_struct heap_find_leak(void)
 {
-	struct heap_leakid_struct record = {.file_id = 0, .line_id = 0, .cnt = 0};
+	struct heap_leakid_struct record = {.file_id = "", .line_id = 0, .cnt = 0};
 	struct search_point_struct search_base;
 	struct search_point_struct search_id;
 
-	uint8_t fid;
+	const char* fid;
 	uint16_t lid;
 	uint32_t cnt;
 	bool found_next_id = true;
@@ -611,7 +611,7 @@ struct heap_leakid_struct heap_find_leak(void)
 struct dynbuf_struct
 {
 	uint16_t id_line;
-	uint8_t id_file;
+	const char* id_file;
 	size_t size;
 	size_t pos;
 	char* buf;
@@ -635,7 +635,7 @@ static void append_char(void* buf, char x)
 }
 
 #ifdef HEAP_ID_SECTIONS
-char* heap_prnf_id(uint8_t id_file, uint16_t id_line, const char* fmt, ...)
+char* heap_prnf_id(const char* id_file, uint16_t id_line, const char* fmt, ...)
 #else
 char* heap_prnf(const char* fmt, ...)
 #endif
@@ -677,10 +677,8 @@ char* heap_prnf_P(PGM_P fmt, ...)
 {
 	va_list va;
 	va_start(va, fmt);
-	struct dynbuf_struct dynbuf;
+	int 	size;
 
-	dynbuf.size = strlen_P(fmt)+GROW_STEP;
-	dynbuf.pos = 0;
 	#ifdef HEAP_ID_SECTIONS
 	dynbuf.buf = heap_allocate_id(dynbuf.size, id_file, id_line);
 	dynbuf.id_file = id_file;
@@ -733,7 +731,7 @@ static void used_shrink(struct used_struct *used_ptr, size_t new_size)
 				free_ptr->key = free_ptr->size ^ KEY_FREE;
 			#endif
 			#ifdef HEAP_ID_SECTIONS
-				free_ptr->id_file = FILE_ENUM;	//(internal ID)
+				free_ptr->id_file = __FILE__;	//(internal ID)
 				free_ptr->id_line = __LINE__;
 			#endif
 

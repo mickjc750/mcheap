@@ -33,7 +33,7 @@
 	#define USE_KEYS
 
 //	Heap size
-	#define	HEAP_SIZE	1000
+	#define	HEAP_SIZE	2000
 
 /*
 	If HEAP_ID_SECTIONS is defined, heap_id_file and heap_id_line (caller ID) will be available in all the below macros
@@ -386,6 +386,9 @@ void* heap_reallocate(void* section, size_t new_size)
 		heap_id_line = id_line;
 	#endif
 
+	if(!heap_contains(section))
+		ERROR_REALLOC_STATIC();
+
 	if(section == NULL)
 	{
 		#ifdef HEAP_ID_SECTIONS
@@ -396,9 +399,6 @@ void* heap_reallocate(void* section, size_t new_size)
 	}
 	else
 	{
-		if(!heap_contains(section))
-			ERROR_REALLOC_STATIC();
-
 		// align size
 		if(new_size & (ALIGNMENT-1))
 			new_size += ALIGNMENT;
@@ -607,6 +607,33 @@ struct heap_leakid_struct heap_find_leak(void)
 
 
 #ifdef HEAP_PROVIDE_PRNF
+#define GROW_STEP 30
+struct dynbuf_struct
+{
+	uint16_t id_line;
+	uint8_t id_file;
+	size_t size;
+	size_t pos;
+	char* buf;
+};
+
+static void append_char(void* buf, char x);
+static void append_char(void* buf, char x)
+{
+	struct dynbuf_struct* dynbuf = (struct dynbuf_struct*)buf;
+	if(dynbuf->pos == dynbuf->size-1)
+	{
+		#ifdef HEAP_ID_SECTIONS
+		dynbuf->buf = heap_reallocate_id(dynbuf->buf, dynbuf->size+GROW_STEP, dynbuf->id_file, dynbuf->id_line);
+		#else
+		dynbuf->buf = heap_reallocate(dynbuf->buf, dynbuf->size+GROW_STEP);
+		#endif
+		dynbuf->size += GROW_STEP;
+	};
+	dynbuf->buf[dynbuf->pos++] = x;
+	dynbuf->buf[dynbuf->pos] = 0;
+}
+
 #ifdef HEAP_ID_SECTIONS
 char* heap_prnf_id(uint8_t id_file, uint16_t id_line, const char* fmt, ...)
 #else
@@ -615,22 +642,30 @@ char* heap_prnf(const char* fmt, ...)
 {
 	va_list va;
 	va_start(va, fmt);
-	int 	size;
-	char* 	result;
+	struct dynbuf_struct dynbuf;
 
-	size = vsnprnf(NULL, 0, fmt, va)+1;
-
+	dynbuf.size = strlen(fmt)+GROW_STEP;
+	dynbuf.pos = 0;
 	#ifdef HEAP_ID_SECTIONS
-		result = heap_allocate_id(size, id_file, id_line);
+	dynbuf.buf = heap_allocate_id(dynbuf.size, id_file, id_line);
+	dynbuf.id_file = id_file;
+	dynbuf.id_line = id_line;
 	#else
-		result = heap_allocate(size);
+	dynbuf.buf = heap_allocate(dynbuf.size);
 	#endif
 
-	if(result)
-		vsprnf(result, fmt, va);
+	vfptrprnf(append_char, &dynbuf, fmt, va);
+
+	append_char(&dynbuf, 0);	//terminate
+
+	#ifdef HEAP_ID_SECTIONS
+	dynbuf.buf = heap_reallocate_id(dynbuf.buf, dynbuf.pos+1, id_file, id_line);
+	#else
+	dynbuf.buf = heap_reallocate(dynbuf.buf, dynbuf.pos+1);
+	#endif
 
 	va_end(va);
-	return result;
+	return dynbuf.buf;
 };
 
 #ifdef PLATFORM_AVR
@@ -642,22 +677,30 @@ char* heap_prnf_P(PGM_P fmt, ...)
 {
 	va_list va;
 	va_start(va, fmt);
-	int 	size;
-	char* 	result;
+	struct dynbuf_struct dynbuf;
 
-	size = vsnprnf_P(NULL, 0, fmt, va)+1;
-
+	dynbuf.size = strlen_P(fmt)+GROW_STEP;
+	dynbuf.pos = 0;
 	#ifdef HEAP_ID_SECTIONS
-		result = heap_allocate_id(size, id_file, id_line);
+	dynbuf.buf = heap_allocate_id(dynbuf.size, id_file, id_line);
+	dynbuf.id_file = id_file;
+	dynbuf.id_line = id_line;
 	#else
-		result = heap_allocate(size);
+	dynbuf.buf = heap_allocate(dynbuf.size);
 	#endif
 
-	if(result)
-		vsprnf_P(result, fmt, va);
+	vfptrprnf_P(append_char, &dynbuf, fmt, va);
+
+	append_char(&dynbuf, 0);	//terminate
+
+	#ifdef HEAP_ID_SECTIONS
+	dynbuf.buf = heap_reallocate_id(dynbuf.buf, dynbuf.pos+1, id_file, id_line);
+	#else
+	dynbuf.buf = heap_reallocate(dynbuf.buf, dynbuf.pos+1);
+	#endif
 
 	va_end(va);
-	return result;
+	return dynbuf.buf;
 };
 #endif
 #endif

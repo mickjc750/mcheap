@@ -670,7 +670,7 @@ char* heap_prnf(const char* fmt, ...)
 
 #ifdef PLATFORM_AVR
 #ifdef HEAP_ID_SECTIONS
-char* heap_prnf_P_id(uint8_t id_file, uint16_t id_line, PGM_P fmt, ...)
+char* heap_prnf_P_id(const char* id_file, uint16_t id_line, PGM_P fmt, ...)
 #else
 char* heap_prnf_P(PGM_P fmt, ...)
 #endif

@@ -13,7 +13,6 @@
 	#define HEAP_PROVIDE_PRNF
 
 //	If defined heap allocations will include file+line info
-//	Source files must define FILE_ENUM with an identifying value 0-255 by including file_enum.h
 	#define HEAP_ID_SECTIONS
 
 	#ifdef HEAP_ID_SECTIONS
@@ -31,8 +30,8 @@
 		#ifdef HEAP_ID_SECTIONS
 			#define heap_prnf(_fmtarg, ...) 	heap_prnf_id(__FILE__, __LINE__, _fmtarg ,##__VA_ARGS__)
 			#ifdef PLATFORM_AVR
-				#define heap_prnf_P(_fmtarg, ...) 	heap_prnf_P_id(__FILE__, __LINE__, _fmtarg ,##__VA_ARGS__)
-				#define heap_prnf_SL(_fmtarg, ...) 	({char* _prv; _prv = heap_prnf_P_id(__FILE__, __LINE__, PSTR(_fmtarg) ,##__VA_ARGS__); while(0) heap_fmttst(_fmtarg ,##__VA_ARGS__); _prv;})
+				#define heap_prnf_P(_fmtarg, ...) 	heap_prnf_P_id(PSTR(__FILE__), __LINE__, _fmtarg ,##__VA_ARGS__)
+				#define heap_prnf_SL(_fmtarg, ...) 	({char* _prv; _prv = heap_prnf_P_id(PSTR(__FILE__), __LINE__, PSTR(_fmtarg) ,##__VA_ARGS__); while(0) heap_fmttst(_fmtarg ,##__VA_ARGS__); _prv;})
 			#else
 				#define heap_prnf_SL(_fmtarg, ...) 	heap_prnf_id(__FILE__, __LINE__, _fmtarg ,##__VA_ARGS__)
 			#endif

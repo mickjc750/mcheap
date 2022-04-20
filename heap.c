@@ -84,7 +84,7 @@
 		struct free_struct*	next_ptr;	// next free
 		//(insert extras here if desired)
 		// addresses memory after the structure & aligns the size of the structure
-		uint8_t				content[0] __attribute__((aligned(HEAP_ALIGNMENT)));
+		uint8_t		content[0] __attribute__((aligned(HEAP_ALIGNMENT)));
 	};
 
 	struct used_struct

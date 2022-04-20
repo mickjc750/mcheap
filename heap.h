@@ -29,14 +29,16 @@
  HEAP_SIZE
  The heap size in bytes. If this is not defined the default value of 1000 will be used
 
- HEAP_ADDR
- Specify a fixed memory address for the heap. This is useful for parts which may have external RAM not covered by the linker script.
- If this is not defined, the heap space will simply be a static uint8_t[] within the usual BSS section
-
  HEAP_ALIGNMENT
  Ensure all allocations are aligned to the specified byte boundary.
  If this is not defined, the default is sizeof(void*)
 
+ HEAP_ADDR
+ Specify a fixed memory address for the heap. This is useful for parts which may have external RAM not covered by the linker script.
+ If this is not defined, the heap space will simply be a static uint8_t[] within the usual BSS section
+ **CAUTION** If this is used, the address provided must respect the HEAP_ALIGNMENT provided, or an alignment of sizeof(void*).
+ This is NOT tested during compilation.
+ 
  HEAP_PRNF_GROW_STEP
  When providing formatted printing using prnf.h, a dynamic buffer is used. The buffer will be expanded as needed by this many bytes
  at a time. If this is not defined, the default value is 30 bytes.

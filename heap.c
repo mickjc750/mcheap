@@ -6,59 +6,27 @@
 	It is intended to be a safe alternative to malloc() and free(),
 	 by vigilant run time testing of the heap space, and catching errors with the ERROR_x macros.
 
-	There are performance improvements that could be made at the cost of 
+	There are performance improvements that could be made at the cost of source complexity.
+	Particularly in the number of times the free list is walked for reallocations
 */
 
-	#include "includes.h"
+	#include "heap.h"
+
+	#ifdef HEAP_PROVIDE_PRNF
+		#include "prnf.h"
+	#endif
 
 //********************************************************************************************************
-// Configurable defines
+// Local defines
 //********************************************************************************************************
 
-//	in bytes
-	#define ALIGNMENT 	(sizeof(void*))
+	#ifndef HEAP_SIZE
+		#define HEAP_SIZE 1000
+	#endif
 
-//	If defined, each call to heap_allocate() or heap_free() will
-//	track the largest free section available, and the heap headroom
-	#define TRACK_STATS
-
-//	Test entire heap before allocating or freeing (walks all sections)
-//	Each free operation will test that the given address is actually a used section
-//	To test the heap without allocating or freeing call heap_free(NULL), or reallocate an existing allocation.
-	#define TEST_HEAP
-
-//	If defined, insert key values at the start of each section (both free and allocated) for integrity checking.
-//	Key value will be .size ^ KEY_USED/KEY_FREE
-//	The keys will only be tested if TEST_HEAP is defined
-	#define USE_KEYS
-
-//	Heap size
-	#define	HEAP_SIZE	1000
-
-/*
-	If HEAP_ID_SECTIONS is defined, heap_id_file and heap_id_line (caller ID) will be available in all the below macros
-	and can be passed to an assert handler to identify the caller.
-
-	Define these to be ((void)0) if not used
-
-	executed if call to heap_allocate fails
-	ERROR_ALLOCATION_FAIL()
-
-	executed if heap re-allocate fails
-	ERROR_REALLOC_FAIL()
-
-	executed if heap_free() is called with an address outside the heap
-	ERROR_FREE_STATIC()
-
-	executed if heap_reallocate() is called with an address outside the heap
-	ERROR_REALLOC_STATIC()	
-
-	executed if heap_free() is called with an address inside the heap, but not an allocation (requires TEST_HEAP)
-	ERROR_FALSE_FREE()		
-	
-	executed if heap is broken (requires TEST_HEAP)
-	ERROR_BROKEN()
-*/
+	#ifndef HEAP_ALIGNMENT
+		#define HEAP_ALIGNMENT 	(sizeof(void*))
+	#endif
 
 	#ifdef PLATFORM_AVR
 		#define SLMEM(arg)	PSTR(arg)
@@ -66,7 +34,15 @@
 		#define SLMEM(arg)	(arg)
 	#endif
 
-	#ifdef HEAP_ID_SECTIONS
+	#ifdef HEAP_NO_ASSERT
+		#define ERROR_ALLOCATION_FAIL()	while(true)
+		#define ERROR_REALLOC_FAIL()	while(true)
+		#define ERROR_FREE_STATIC()		while(true)
+		#define ERROR_REALLOC_STATIC()	while(true)
+		#define ERROR_FALSE_FREE()		while(true)
+		#define ERROR_BROKEN()			while(true)
+
+	#elif defined HEAP_ID_SECTIONS
 		#define ERROR_ALLOCATION_FAIL()	assert_handle(heap_id_file, heap_id_line, SLMEM("heap-fail-alloc"))
 		#define ERROR_REALLOC_FAIL()	assert_handle(heap_id_file, heap_id_line, SLMEM("heap-fail-realloc"))
 		#define ERROR_FREE_STATIC()		assert_handle(heap_id_file, heap_id_line, SLMEM("heap-free-static"))
@@ -82,11 +58,7 @@
 		#define ERROR_BROKEN()			ASSERT_MSG_SL(false, "heap-broken")
 	#endif
 
-//********************************************************************************************************
-// Local defines
-//********************************************************************************************************
-
-	#ifdef USE_KEYS
+	#ifdef HEAP_USE_KEYS
 	//	Misc values for testing heap integrity
 		#define	KEY_USED	((size_t)0x47B3D19C)
 		#define KEY_FREE	((size_t)0x8BA1963F)
@@ -101,7 +73,7 @@
 	// the content member must have the same name (content) in both
 	struct free_struct
 	{
-	#ifdef USE_KEYS
+	#ifdef HEAP_USE_KEYS
 		size_t				key;		// key ^ size == KEY_FREE
 	#endif
 		size_t				size;		// size of empty content[] following this structure &content[size] will address the next used_struct/free_struct
@@ -112,12 +84,12 @@
 		struct free_struct*	next_ptr;	// next free
 		//(insert extras here if desired)
 		// addresses memory after the structure & aligns the size of the structure
-		uint8_t				content[0] __attribute__((aligned(ALIGNMENT)));
+		uint8_t				content[0] __attribute__((aligned(HEAP_ALIGNMENT)));
 	};
 
 	struct used_struct
 	{
-	#ifdef USE_KEYS
+	#ifdef HEAP_USE_KEYS
 		size_t		key;				// key ^ size == KEY_USED
 	#endif
 		size_t		size;				// size of content[] following this structure &content[size] will address the next used_struct/free_struct
@@ -127,7 +99,7 @@
 	#endif
 		//(insert extras here if desired)
 		// addresses memory after the structure & aligns the size of the structure
-		uint8_t		content[0] __attribute__((aligned(ALIGNMENT)));
+		uint8_t		content[0] __attribute__((aligned(HEAP_ALIGNMENT)));
 	};
 
 //	Info used for searching the heap, contains a section pointer (to either type), and the next known free section
@@ -163,10 +135,10 @@
 // Public variables
 //********************************************************************************************************
 
-	//the minimum free space which has occurred since heap_init() (requires TRACK_STATS)
+	//the minimum free space which has occurred since heap_init() (requires HEAP_TRACK_STATS)
 	size_t		heap_head_room=0;	
 
-	//the current largest free section (requires TRACK_STATS)
+	//the current largest free section (requires HEAP_TRACK_STATS)
 	size_t 		heap_largest_free=0;
 
 	//the current number of allocations
@@ -179,7 +151,11 @@
 // Private variables
 //********************************************************************************************************
 
-	static uint8_t				heap_space[HEAP_SIZE] __attribute__((aligned(ALIGNMENT)));
+	#ifdef HEAP_ADDR
+		static uint8_t* heap_space = (uint8_t*)HEAP_ADDR;
+	#else
+		static uint8_t	heap_space[HEAP_SIZE] __attribute__((aligned(HEAP_ALIGNMENT)));
+	#endif
 
 	static bool					initialized = false;
 
@@ -194,98 +170,70 @@
 // Private prototypes
 //********************************************************************************************************
 
-//
 // Return true if section is in the free list
-//
 static bool in_free_list(struct free_struct *x);
 
-//
 // Shrink used section so that it's content is reduced to the new_size.
 // This will only happen if doing so allows a new free section to be created.
 // new_size should be pre-aligned by the caller
 // If created, the new free section will be inserted into the free list, and merged if possible
-//
 static void used_shrink(struct used_struct *used_ptr, size_t new_size);
 
-//
 // Convert a used section to a free section, does not insert into the free list
 // Returns the result
-// 
 static struct free_struct* used_to_free(struct used_struct *used_ptr);
 
-//
 // Convert a free section into a used section, free section must be removed from the free list beforehand
 // Returns the result
-// 
 static struct used_struct* free_to_used(struct free_struct *free_ptr);
 
-//
 // Extend a used section into a lower free section, also moves content limited to 'preserve_size' bytes
 // Free section must be removed from the free list before calling this function
 // Returns the resulting used section
-//
 static struct used_struct* used_extend_down(struct free_struct *free_ptr, struct used_struct *used_ptr, size_t preserve_size);
 
-//
 // Extend a used section into a higher free section
 // The higher free section must be removed from the free list before calling this function
-//
 static struct used_struct* used_extend_up(struct used_struct *used_ptr);
 
-//
 // Find free below
 // Find the last free section before target section (either type), if there is one
 // Otherwise return NULL
-//
 static struct free_struct* find_free_below(void* target);
 
 // Walk the free list for allocation (or re-allocation)
 // Find a free section capable of holding 'size' bytes as a used section
 static struct free_struct* free_walk(size_t size);
 
-//
 // Insert a free section into the free list
 // Walks the free list to find the insertion point
-//
 static void free_insert(struct free_struct *new_free);
 
-//
 // Remove a free section from the free list
 // Walks the free list to find the link to modify
-//
 static void free_remove(struct free_struct *free_ptr);
 
-//
 // Merge free section with adjacent free sections
 // All free sections must already be in the free list
-//
 static void free_merge(struct free_struct *free_ptr);
 
-//
 // Merge free section into the next free section if possible
 // merge does not destroy id_ info for either section, but overwrites second sections key with KEY_MERGED
-//
 static void free_merge_up(struct free_struct *free_ptr);
 
-//
 // From any section, find the next used section, or the end of the heap.
 // The next free section from the starting point must be known.
-//
 static struct search_point_struct find_next_used(struct search_point_struct start);
 
-//
 // Find largest free block. Used for tracking heap headroom.
-//
-#ifdef TRACK_STATS
+#ifdef HEAP_TRACK_STATS
 	static void free_find_largest(void);
 #endif
 
-//
 // Heap test, may be used before freeing memory, to see if the heap is intact,
 // and also that the section about to be freed is actually a used section
-//
-#ifdef TEST_HEAP
-	static void test_heap(struct used_struct *used_ptr);
+#ifdef HEAP_TEST
+	static void heap_test(struct used_struct *used_ptr);
 #endif
 
 
@@ -300,7 +248,7 @@ void heap_init(void)
 
 //	initialize free space
 	free_ptr->size 	= HEAP_SIZE - sizeof(struct free_struct);
-	#ifdef USE_KEYS
+	#ifdef HEAP_USE_KEYS
 		free_ptr->key 	= free_ptr->size ^ KEY_FREE;
 	#endif
 
@@ -329,16 +277,16 @@ void* heap_allocate(size_t size)
 		heap_init();
 
 //	align size
-	if(size & (ALIGNMENT-1))
-		size += ALIGNMENT;
-	size &= ~(size_t)(ALIGNMENT-1);
+	if(size & (HEAP_ALIGNMENT-1))
+		size += HEAP_ALIGNMENT;
+	size &= ~(size_t)(HEAP_ALIGNMENT-1);
 
 //	allocation must be large enough to return to the free list
 	if(sizeof(struct used_struct) + size < sizeof(struct free_struct))
 		size = sizeof(struct free_struct) - sizeof(struct used_struct);
 
-	#ifdef TEST_HEAP
-		test_heap(NULL);
+	#ifdef HEAP_TEST
+		heap_test(NULL);
 	#endif
 
 	free_ptr = free_walk(size);
@@ -359,7 +307,7 @@ void* heap_allocate(size_t size)
 			heap_allocations_max = heap_allocations;
 	};
 
-	#ifdef TRACK_STATS
+	#ifdef HEAP_TRACK_STATS
 		free_find_largest();
 	#endif
 
@@ -400,9 +348,9 @@ void* heap_reallocate(void* section, size_t new_size)
 	else
 	{
 		// align size
-		if(new_size & (ALIGNMENT-1))
-			new_size += ALIGNMENT;
-		new_size &= ~(size_t)(ALIGNMENT-1);
+		if(new_size & (HEAP_ALIGNMENT-1))
+			new_size += HEAP_ALIGNMENT;
+		new_size &= ~(size_t)(HEAP_ALIGNMENT-1);
 
 		// allocation must be large enough to return to the free list
 		if(sizeof(struct used_struct) + new_size < sizeof(struct free_struct))
@@ -410,9 +358,9 @@ void* heap_reallocate(void* section, size_t new_size)
 
 		used_ptr = container_of(section, struct used_struct, content);
 
-		#ifdef TEST_HEAP
+		#ifdef HEAP_TEST
 		// fail if this is not a used section
-			test_heap(used_ptr);
+			heap_test(used_ptr);
 		#endif
 
 		// find space for new allocation
@@ -489,7 +437,7 @@ void* heap_reallocate(void* section, size_t new_size)
 		if(!retval)
 			ERROR_REALLOC_FAIL();
 
-		#ifdef TRACK_STATS
+		#ifdef HEAP_TRACK_STATS
 			free_find_largest();
 		#endif
 	};
@@ -512,8 +460,8 @@ void* heap_free(void* section)
 
 	if(section==NULL)
 	{
-		#ifdef TEST_HEAP
-			test_heap(NULL);
+		#ifdef HEAP_TEST
+			heap_test(NULL);
 		#endif
 	}
 	else
@@ -525,16 +473,16 @@ void* heap_free(void* section)
 		{
 			//in the heap
 			used_ptr = container_of(section, struct used_struct, content);
-			#ifdef TEST_HEAP
+			#ifdef HEAP_TEST
 				//fail if this is not a used section
-				test_heap(used_ptr);
+				heap_test(used_ptr);
 			#endif
 			
 			free_ptr = used_to_free(used_ptr);	//convert to free section
 			free_insert(free_ptr);				//insert into the free list
 			free_merge(free_ptr);				//merge with adjacent free sections
 
-			#ifdef TRACK_STATS
+			#ifdef HEAP_TRACK_STATS
 				free_find_largest();
 			#endif
 			heap_allocations--;
@@ -607,7 +555,11 @@ struct heap_leakid_struct heap_find_leak(void)
 
 
 #ifdef HEAP_PROVIDE_PRNF
-#define GROW_STEP 30
+
+#ifndef HEAP_PRNF_GROW_STEP
+	#define HEAP_PRNF_GROW_STEP 30
+#endif
+
 struct dynbuf_struct
 {
 	uint16_t id_line;
@@ -624,11 +576,11 @@ static void append_char(void* buf, char x)
 	if(dynbuf->pos == dynbuf->size-1)
 	{
 		#ifdef HEAP_ID_SECTIONS
-		dynbuf->buf = heap_reallocate_id(dynbuf->buf, dynbuf->size+GROW_STEP, dynbuf->id_file, dynbuf->id_line);
+		dynbuf->buf = heap_reallocate_id(dynbuf->buf, dynbuf->size+HEAP_PRNF_GROW_STEP, dynbuf->id_file, dynbuf->id_line);
 		#else
-		dynbuf->buf = heap_reallocate(dynbuf->buf, dynbuf->size+GROW_STEP);
+		dynbuf->buf = heap_reallocate(dynbuf->buf, dynbuf->size+HEAP_PRNF_GROW_STEP);
 		#endif
-		dynbuf->size += GROW_STEP;
+		dynbuf->size += HEAP_PRNF_GROW_STEP;
 	};
 	dynbuf->buf[dynbuf->pos++] = x;
 	dynbuf->buf[dynbuf->pos] = 0;
@@ -644,7 +596,7 @@ char* heap_prnf(const char* fmt, ...)
 	va_start(va, fmt);
 	struct dynbuf_struct dynbuf;
 
-	dynbuf.size = strlen(fmt)+GROW_STEP;
+	dynbuf.size = strlen(fmt)+HEAP_PRNF_GROW_STEP;
 	dynbuf.pos = 0;
 	#ifdef HEAP_ID_SECTIONS
 	dynbuf.buf = heap_allocate_id(dynbuf.size, id_file, id_line);
@@ -727,7 +679,7 @@ static void used_shrink(struct used_struct *used_ptr, size_t new_size)
 
 			//construct remaining free section
 			free_ptr->size = used_ptr->size - new_size - sizeof(struct free_struct);
-			#ifdef USE_KEYS
+			#ifdef HEAP_USE_KEYS
 				free_ptr->key = free_ptr->size ^ KEY_FREE;
 			#endif
 			#ifdef HEAP_ID_SECTIONS
@@ -739,7 +691,7 @@ static void used_shrink(struct used_struct *used_ptr, size_t new_size)
 			used_ptr->size = new_size;
 
 			//correct used sections key
-			#ifdef USE_KEYS
+			#ifdef HEAP_USE_KEYS
 				used_ptr->key 	= used_ptr->size ^ KEY_USED;
 			#endif
 
@@ -763,7 +715,7 @@ static struct free_struct* used_to_free(struct used_struct *used_ptr)
 //	Build new free section
 	free_ptr = (void*)used_ptr;
 	free_ptr->size = SECTION_SIZE(used_ptr) - sizeof(struct free_struct);
-	#ifdef USE_KEYS
+	#ifdef HEAP_USE_KEYS
 		free_ptr->key = KEY_FREE ^ free_ptr->size;
 	#endif
 	#ifdef HEAP_ID_SECTIONS
@@ -785,7 +737,7 @@ static struct used_struct* free_to_used(struct free_struct *free_ptr)
 //	Build new used section
 	used_ptr = (void*)free_ptr;
 	used_ptr->size = SECTION_SIZE(free_ptr) - sizeof(struct used_struct);
-	#ifdef USE_KEYS
+	#ifdef HEAP_USE_KEYS
 		used_ptr->key = KEY_USED ^ used_ptr->size;
 	#endif
 	#ifdef HEAP_ID_SECTIONS
@@ -821,7 +773,7 @@ static struct used_struct* used_extend_down(struct free_struct *free_ptr, struct
 	used_ptr->size += extra_size;
 
 //	correct used sections key
-	#ifdef USE_KEYS
+	#ifdef HEAP_USE_KEYS
 		used_ptr->key = used_ptr->size ^ KEY_USED;
 	#endif
 
@@ -842,7 +794,7 @@ static struct used_struct* used_extend_up(struct used_struct *used_ptr)
 
 	used_ptr->size += ext_size;
 
-	#ifdef USE_KEYS
+	#ifdef HEAP_USE_KEYS
 		used_ptr->key = used_ptr->size ^ KEY_USED;
 	#endif
 
@@ -967,7 +919,7 @@ static void free_merge_up(struct free_struct *free_ptr)
 			free_ptr->size += SECTION_SIZE(free_ptr->next_ptr);
 
 			//correct extended sections key, and destroy next free sections key
-			#ifdef USE_KEYS
+			#ifdef HEAP_USE_KEYS
 				free_ptr->key 	= free_ptr->size ^ KEY_FREE;
 				free_ptr->next_ptr->key = KEY_MERGED;
 			#endif
@@ -1018,7 +970,7 @@ static struct search_point_struct find_next_used(struct search_point_struct star
 //
 // Find largest free block. Used for tracking heap headroom.
 //
-#ifdef TRACK_STATS
+#ifdef HEAP_TRACK_STATS
 static void free_find_largest(void)
 {
 	struct free_struct *free_ptr;
@@ -1049,9 +1001,9 @@ static void free_find_largest(void)
 // Heap test, may be used before freeing memory, to see if the heap is intact,
 // and also that the section about to be freed is actually a used section
 //
-#ifdef TEST_HEAP
-	static void test_heap(struct used_struct *used_ptr)	
-	#ifdef USE_KEYS
+#ifdef HEAP_TEST
+	static void heap_test(struct used_struct *used_ptr)	
+	#ifdef HEAP_USE_KEYS
 {
 	struct free_struct *next_free_ptr;
 	void* section_ptr;

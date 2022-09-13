@@ -536,6 +536,9 @@ static void* reallocate(void* section, size_t new_size)
 	struct used_struct* new_used_ptr=NULL;
 	void* retval = NULL;
 
+	if(!initialized)
+		initialize();
+
 	if(!heap_contains(section))
 		ERROR_REALLOC_STATIC();
 
@@ -646,6 +649,9 @@ static void* internal_free(void* section)
 {
 	struct used_struct *used_ptr;
 	struct free_struct *free_ptr;
+
+	if(!initialized)
+		initialize();
 
 	if(section==NULL)
 	{

@@ -159,7 +159,7 @@
 // Public variables
 //********************************************************************************************************
 
-	//the minimum free space which has occurred since heap_init() (requires MCHEAP_TRACK_STATS)
+	//the minimum free space which has occurred since initialize() (requires MCHEAP_TRACK_STATS)
 	size_t		heap_head_room=0;	
 
 	//the current largest free section (requires MCHEAP_TRACK_STATS)
@@ -194,73 +194,75 @@
 // Private prototypes
 //********************************************************************************************************
 
-// Internal allocate/reallocate/free functions 
-static void* allocate(size_t size);
-static void* reallocate(void* section, size_t new_size);
-static void* internal_free(void* section);
+	static void initialize(void);
 
-// Return true if section is in the free list
-static bool in_free_list(struct free_struct *x);
+// 	Internal allocate/reallocate/free functions 
+	static void* allocate(size_t size);
+	static void* reallocate(void* section, size_t new_size);
+	static void* internal_free(void* section);
 
-// Shrink used section so that it's content is reduced to the new_size.
-// This will only happen if doing so allows a new free section to be created.
-// new_size should be pre-aligned by the caller
-// If created, the new free section will be inserted into the free list, and merged if possible
-static void used_shrink(struct used_struct *used_ptr, size_t new_size);
+// 	Return true if section is in the free list
+	static bool in_free_list(struct free_struct *x);
 
-// Convert a used section to a free section, does not insert into the free list
-// Returns the result
-static struct free_struct* used_to_free(struct used_struct *used_ptr);
+// 	Shrink used section so that it's content is reduced to the new_size.
+// 	This will only happen if doing so allows a new free section to be created.
+// 	new_size should be pre-aligned by the caller
+// 	If created, the new free section will be inserted into the free list, and merged if possible
+	static void used_shrink(struct used_struct *used_ptr, size_t new_size);
 
-// Convert a free section into a used section, free section must be removed from the free list beforehand
-// Returns the result
-static struct used_struct* free_to_used(struct free_struct *free_ptr);
+// 	Convert a used section to a free section, does not insert into the free list
+// 	Returns the result
+	static struct free_struct* used_to_free(struct used_struct *used_ptr);
 
-// Extend a used section into a lower free section, also moves content limited to 'preserve_size' bytes
-// Free section must be removed from the free list before calling this function
-// Returns the resulting used section
-static struct used_struct* used_extend_down(struct free_struct *free_ptr, struct used_struct *used_ptr, size_t preserve_size);
+// 	Convert a free section into a used section, free section must be removed from the free list beforehand
+// 	Returns the result
+	static struct used_struct* free_to_used(struct free_struct *free_ptr);
 
-// Extend a used section into a higher free section
-// The higher free section must be removed from the free list before calling this function
-static struct used_struct* used_extend_up(struct used_struct *used_ptr);
+// 	Extend a used section into a lower free section, also moves content limited to 'preserve_size' bytes
+// 	Free section must be removed from the free list before calling this function
+// 	Returns the resulting used section
+	static struct used_struct* used_extend_down(struct free_struct *free_ptr, struct used_struct *used_ptr, size_t preserve_size);
 
-// Find free below
-// Find the last free section before target section (either type), if there is one
-// Otherwise return NULL
-static struct free_struct* find_free_below(void* target);
+// 	Extend a used section into a higher free section
+// 	The higher free section must be removed from the free list before calling this function
+	static struct used_struct* used_extend_up(struct used_struct *used_ptr);
 
-// Walk the free list for allocation (or re-allocation)
-// Find a free section capable of holding 'size' bytes as a used section
-static struct free_struct* free_walk(size_t size);
+// 	Find free below
+// 	Find the last free section before target section (either type), if there is one
+// 	Otherwise return NULL
+	static struct free_struct* find_free_below(void* target);
 
-// Insert a free section into the free list
-// Walks the free list to find the insertion point
-static void free_insert(struct free_struct *new_free);
+// 	Walk the free list for allocation (or re-allocation)
+// 	Find a free section capable of holding 'size' bytes as a used section
+	static struct free_struct* free_walk(size_t size);
 
-// Remove a free section from the free list
-// Walks the free list to find the link to modify
-static void free_remove(struct free_struct *free_ptr);
+// 	Insert a free section into the free list
+// 	Walks the free list to find the insertion point
+	static void free_insert(struct free_struct *new_free);
 
-// Merge free section with adjacent free sections
-// All free sections must already be in the free list
-static void free_merge(struct free_struct *free_ptr);
+// 	Remove a free section from the free list
+// 	Walks the free list to find the link to modify
+	static void free_remove(struct free_struct *free_ptr);
 
-// Merge free section into the next free section if possible
-// merge does not destroy id_ info for either section, but overwrites second sections key with KEY_MERGED
-static void free_merge_up(struct free_struct *free_ptr);
+// 	Merge free section with adjacent free sections
+// 	All free sections must already be in the free list
+	static void free_merge(struct free_struct *free_ptr);
 
-// From any section, find the next used section, or the end of the heap.
-// The next free section from the starting point must be known.
-static struct search_point_struct find_next_used(struct search_point_struct start);
+// 	Merge free section into the next free section if possible
+// 	merge does not destroy id_ info for either section, but overwrites second sections key with KEY_MERGED
+	static void free_merge_up(struct free_struct *free_ptr);
 
-// Find largest free block. Used for tracking heap headroom.
+// 	From any section, find the next used section, or the end of the heap.
+// 	The next free section from the starting point must be known.
+	static struct search_point_struct find_next_used(struct search_point_struct start);
+
+// 	Find largest free block. Used for tracking heap headroom.
 #ifdef MCHEAP_TRACK_STATS
 	static void free_find_largest(void);
 #endif
 
-// Heap test, may be used before freeing memory, to see if the heap is intact,
-// and also that the section about to be freed is actually a used section
+// 	Heap test, may be used before freeing memory, to see if the heap is intact,
+// 	and also that the section about to be freed is actually a used section
 #ifdef MCHEAP_TEST
 	static void heap_test(struct used_struct *used_ptr);
 #endif
@@ -269,23 +271,6 @@ static struct search_point_struct find_next_used(struct search_point_struct star
 //********************************************************************************************************
 // Public functions
 //********************************************************************************************************
-
-void heap_init(void)
-{
-	initialized=true;
-	static struct free_struct* free_ptr = (void*)heap_space;
-
-//	initialize free space
-	free_ptr->size 	= MCHEAP_SIZE - sizeof(struct free_struct);
-	#ifdef MCHEAP_USE_KEYS
-		free_ptr->key 	= free_ptr->size ^ KEY_FREE;
-	#endif
-
-	free_ptr->next_ptr 	= NULL;
-
-	heap_head_room		= free_ptr->size;
-	heap_largest_free	= free_ptr->size;
-}
 
 #ifdef MCHEAP_ID_SECTIONS
 void* heap_allocate_id(size_t size, const char* id_file, uint16_t id_line)
@@ -479,6 +464,23 @@ char* heap_prnf_P(PGM_P fmt, ...)
 // Private functions
 //********************************************************************************************************
 
+static void initialize(void)
+{
+	initialized=true;
+	static struct free_struct* free_ptr = (void*)heap_space;
+
+//	initialize free space
+	free_ptr->size 	= MCHEAP_SIZE - sizeof(struct free_struct);
+	#ifdef MCHEAP_USE_KEYS
+		free_ptr->key 	= free_ptr->size ^ KEY_FREE;
+	#endif
+
+	free_ptr->next_ptr 	= NULL;
+
+	heap_head_room		= free_ptr->size;
+	heap_largest_free	= free_ptr->size;
+}
+
 static void* allocate(size_t size)
 {
 	struct free_struct *free_ptr;
@@ -486,7 +488,7 @@ static void* allocate(size_t size)
 	void* retval=NULL;
 
 	if(!initialized)
-		heap_init();
+		initialize();
 
 //	align size
 	if(size & (MCHEAP_ALIGNMENT-1))

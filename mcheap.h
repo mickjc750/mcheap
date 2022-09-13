@@ -90,12 +90,6 @@ MCHEAP_NO_ASSERT
 		This requires MCHEAP_ID_SECTIONS.
 
 
-	void heap_init(void)
-
-		Initialise the heap. This may be called prior to any heap operations. Although it is not mandatory.
-		If it is not called by the application, the first heap operation will call it.
-
-
 	(If MCHEAP_PROVIDE_PRNF is defined)
 	char* heap_prnf_SL(const char* format, ...)
 

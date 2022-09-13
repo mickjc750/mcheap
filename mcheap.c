@@ -194,6 +194,11 @@
 // Private prototypes
 //********************************************************************************************************
 
+// Internal allocate/reallocate/free functions 
+static void* allocate(size_t size);
+static void* reallocate(void* section, size_t new_size);
+static void* internal_free(void* section);
+
 // Return true if section is in the free list
 static bool in_free_list(struct free_struct *x);
 
@@ -288,14 +293,197 @@ void* heap_allocate_id(size_t size, const char* id_file, uint16_t id_line)
 void* heap_allocate(size_t size)
 #endif
 {
-	struct free_struct *free_ptr;
-	struct used_struct *used_ptr;
-	void* retval=NULL;
+	#ifdef MCHEAP_ID_SECTIONS
+		heap_id_file = id_file;
+		heap_id_line = id_line;
+	#endif
+
+	return allocate(size);
+}
+
+#ifdef MCHEAP_ID_SECTIONS
+void* heap_reallocate_id(void* section, size_t new_size, const char* id_file, uint16_t id_line)
+#else
+void* heap_reallocate(void* section, size_t new_size)
+#endif
+{
+	#ifdef MCHEAP_ID_SECTIONS
+		heap_id_file = id_file;
+		heap_id_line = id_line;
+	#endif
+
+	return reallocate(section, new_size);
+}
+
+
+#ifdef MCHEAP_ID_SECTIONS
+void* heap_free_id(void* section, const char* id_file, uint16_t id_line)
+#else
+void* heap_free(void* section)
+#endif
+{
+	#ifdef MCHEAP_ID_SECTIONS
+		heap_id_file = id_file;
+		heap_id_line = id_line;
+	#endif
+
+	return internal_free(section);
+}
+
+
+//return true if pointer is within the heap
+bool heap_contains(void* section)
+{
+	bool retval;
+	
+	retval = ( (heap_space < (uint8_t*)section) && ((uint8_t*)section < &heap_space[MCHEAP_SIZE]) );
+
+	return retval;
+}
+
+#ifdef MCHEAP_ID_SECTIONS
+struct heap_leakid_struct heap_find_leak(void)
+{
+	struct heap_leakid_struct record = {.file_id = "", .line_id = 0, .cnt = 0};
+	struct search_point_struct search_base;
+	struct search_point_struct search_id;
+
+	const char* fid;
+	uint16_t lid;
+	uint32_t cnt;
+	bool found_next_id = true;
+
+	search_base.section_ptr = heap_space;
+	search_base.next_free_ptr = first_free;
+
+	search_base = find_next_used(search_base);
+
+	while(search_base.section_ptr != END_OF_HEAP && found_next_id)
+	{
+		fid = USEDCAST(search_base.section_ptr)->id_file;
+		lid = USEDCAST(search_base.section_ptr)->id_line;
+		search_id = search_base;
+		found_next_id = false;
+		cnt = 0;
+		while(search_id.section_ptr != END_OF_HEAP)
+		{
+			if( (fid == USEDCAST(search_id.section_ptr)->id_file)
+			&&  (lid == USEDCAST(search_id.section_ptr)->id_line) )
+			{
+				cnt++;
+			}
+			else if(!found_next_id)
+			{
+				search_base = search_id;
+				found_next_id = true;
+			};
+
+			search_id = find_next_used(search_id);
+		};
+
+		if(cnt > record.cnt)
+		{
+			record.cnt = cnt;
+			record.file_id = fid;
+			record.line_id = lid;
+		};
+	};
+
+	return record;
+}
+#endif
+
+
+#ifdef MCHEAP_PROVIDE_PRNF
+
+#ifndef MCHEAP_PRNF_GROW_STEP
+	#define MCHEAP_PRNF_GROW_STEP 30
+#endif
+
+struct dynbuf_struct
+{
+	size_t size;
+	size_t pos;
+	char* buf;
+};
+
+static void append_char(void* buf, char x);
+static void append_char(void* buf, char x)
+{
+	struct dynbuf_struct* dynbuf = (struct dynbuf_struct*)buf;
+	if(dynbuf->pos == dynbuf->size-1)
+	{
+		dynbuf->buf = reallocate(dynbuf->buf, dynbuf->size+MCHEAP_PRNF_GROW_STEP);
+		dynbuf->size += MCHEAP_PRNF_GROW_STEP;
+	};
+	dynbuf->buf[dynbuf->pos++] = x;
+	dynbuf->buf[dynbuf->pos] = 0;
+}
+
+#ifdef MCHEAP_ID_SECTIONS
+char* heap_prnf_id(const char* id_file, uint16_t id_line, const char* fmt, ...)
+#else
+char* heap_prnf(const char* fmt, ...)
+#endif
+{
+	va_list va;
+	va_start(va, fmt);
+	struct dynbuf_struct dynbuf;
 
 	#ifdef MCHEAP_ID_SECTIONS
 		heap_id_file = id_file;
 		heap_id_line = id_line;
 	#endif
+
+	dynbuf.size = strlen(fmt)+MCHEAP_PRNF_GROW_STEP;
+	dynbuf.pos = 0;
+	dynbuf.buf = allocate(dynbuf.size);
+
+	vfptrprnf(append_char, &dynbuf, fmt, va);
+	append_char(&dynbuf, 0);	//terminate
+	dynbuf.buf = reallocate(dynbuf.buf, dynbuf.pos+1);
+
+	va_end(va);
+	return dynbuf.buf;
+};
+
+#ifdef PLATFORM_AVR
+#ifdef MCHEAP_ID_SECTIONS
+char* heap_prnf_P_id(const char* id_file, uint16_t id_line, PGM_P fmt, ...)
+#else
+char* heap_prnf_P(PGM_P fmt, ...)
+#endif
+{
+	va_list va;
+	va_start(va, fmt);
+	int 	size;
+
+	#ifdef MCHEAP_ID_SECTIONS
+		heap_id_file = id_file;
+		heap_id_line = id_line;
+	#endif
+
+	dynbuf.buf = allocate(dynbuf.size);
+
+	vfptrprnf_P(append_char, &dynbuf, fmt, va);
+	append_char(&dynbuf, 0);	//terminate
+	dynbuf.buf = reallocate(dynbuf.buf, dynbuf.pos+1);
+
+	va_end(va);
+	return dynbuf.buf;
+};
+#endif
+#endif
+
+//********************************************************************************************************
+// Private functions
+//********************************************************************************************************
+
+static void* allocate(size_t size)
+{
+	struct free_struct *free_ptr;
+	struct used_struct *used_ptr;
+	void* retval=NULL;
 
 	if(!initialized)
 		heap_init();
@@ -338,14 +526,7 @@ void* heap_allocate(size_t size)
 	return retval;
 }
 
-//
-// 	Heap reallocate
-//
-#ifdef MCHEAP_ID_SECTIONS
-void* heap_reallocate_id(void* section, size_t new_size, const char* id_file, uint16_t id_line)
-#else
-void* heap_reallocate(void* section, size_t new_size)
-#endif
+static void* reallocate(void* section, size_t new_size)
 {
 	struct free_struct* free_ptr;
 	struct free_struct* dest_ptr=NULL;
@@ -353,21 +534,12 @@ void* heap_reallocate(void* section, size_t new_size)
 	struct used_struct* new_used_ptr=NULL;
 	void* retval = NULL;
 
-	#ifdef MCHEAP_ID_SECTIONS
-		heap_id_file = id_file;
-		heap_id_line = id_line;
-	#endif
-
 	if(!heap_contains(section))
 		ERROR_REALLOC_STATIC();
 
 	if(section == NULL)
 	{
-		#ifdef MCHEAP_ID_SECTIONS
-			retval = heap_allocate_id(new_size, id_file, id_line);	//if section == NULL just call heap_allocate()
-		#else
-			retval = heap_allocate(new_size);					//if section == NULL just call heap_allocate()
-		#endif
+		retval = allocate(new_size);					//if section == NULL just call allocate()
 	}
 	else
 	{
@@ -468,19 +640,10 @@ void* heap_reallocate(void* section, size_t new_size)
 	return retval;
 }
 
-#ifdef MCHEAP_ID_SECTIONS
-void* heap_free_id(void* section, const char* id_file, uint16_t id_line)
-#else
-void* heap_free(void* section)
-#endif
+static void* internal_free(void* section)
 {
 	struct used_struct *used_ptr;
 	struct free_struct *free_ptr;
-
-	#ifdef MCHEAP_ID_SECTIONS
-		heap_id_file = id_file;
-		heap_id_line = id_line;
-	#endif
 
 	if(section==NULL)
 	{
@@ -514,174 +677,6 @@ void* heap_free(void* section)
 	};
 	return NULL;
 }
-
-//return true if pointer is within the heap
-bool heap_contains(void* section)
-{
-	bool retval;
-	
-	retval = ( (heap_space < (uint8_t*)section) && ((uint8_t*)section < &heap_space[MCHEAP_SIZE]) );
-
-	return retval;
-}
-
-#ifdef MCHEAP_ID_SECTIONS
-struct heap_leakid_struct heap_find_leak(void)
-{
-	struct heap_leakid_struct record = {.file_id = "", .line_id = 0, .cnt = 0};
-	struct search_point_struct search_base;
-	struct search_point_struct search_id;
-
-	const char* fid;
-	uint16_t lid;
-	uint32_t cnt;
-	bool found_next_id = true;
-
-	search_base.section_ptr = heap_space;
-	search_base.next_free_ptr = first_free;
-
-	search_base = find_next_used(search_base);
-
-	while(search_base.section_ptr != END_OF_HEAP && found_next_id)
-	{
-		fid = USEDCAST(search_base.section_ptr)->id_file;
-		lid = USEDCAST(search_base.section_ptr)->id_line;
-		search_id = search_base;
-		found_next_id = false;
-		cnt = 0;
-		while(search_id.section_ptr != END_OF_HEAP)
-		{
-			if( (fid == USEDCAST(search_id.section_ptr)->id_file)
-			&&  (lid == USEDCAST(search_id.section_ptr)->id_line) )
-			{
-				cnt++;
-			}
-			else if(!found_next_id)
-			{
-				search_base = search_id;
-				found_next_id = true;
-			};
-
-			search_id = find_next_used(search_id);
-		};
-
-		if(cnt > record.cnt)
-		{
-			record.cnt = cnt;
-			record.file_id = fid;
-			record.line_id = lid;
-		};
-	};
-
-	return record;
-}
-#endif
-
-
-#ifdef MCHEAP_PROVIDE_PRNF
-
-#ifndef MCHEAP_PRNF_GROW_STEP
-	#define MCHEAP_PRNF_GROW_STEP 30
-#endif
-
-struct dynbuf_struct
-{
-	uint16_t id_line;
-	const char* id_file;
-	size_t size;
-	size_t pos;
-	char* buf;
-};
-
-static void append_char(void* buf, char x);
-static void append_char(void* buf, char x)
-{
-	struct dynbuf_struct* dynbuf = (struct dynbuf_struct*)buf;
-	if(dynbuf->pos == dynbuf->size-1)
-	{
-		#ifdef MCHEAP_ID_SECTIONS
-		dynbuf->buf = heap_reallocate_id(dynbuf->buf, dynbuf->size+MCHEAP_PRNF_GROW_STEP, dynbuf->id_file, dynbuf->id_line);
-		#else
-		dynbuf->buf = heap_reallocate(dynbuf->buf, dynbuf->size+MCHEAP_PRNF_GROW_STEP);
-		#endif
-		dynbuf->size += MCHEAP_PRNF_GROW_STEP;
-	};
-	dynbuf->buf[dynbuf->pos++] = x;
-	dynbuf->buf[dynbuf->pos] = 0;
-}
-
-#ifdef MCHEAP_ID_SECTIONS
-char* heap_prnf_id(const char* id_file, uint16_t id_line, const char* fmt, ...)
-#else
-char* heap_prnf(const char* fmt, ...)
-#endif
-{
-	va_list va;
-	va_start(va, fmt);
-	struct dynbuf_struct dynbuf;
-
-	dynbuf.size = strlen(fmt)+MCHEAP_PRNF_GROW_STEP;
-	dynbuf.pos = 0;
-	#ifdef MCHEAP_ID_SECTIONS
-	dynbuf.buf = heap_allocate_id(dynbuf.size, id_file, id_line);
-	dynbuf.id_file = id_file;
-	dynbuf.id_line = id_line;
-	#else
-	dynbuf.buf = heap_allocate(dynbuf.size);
-	#endif
-
-	vfptrprnf(append_char, &dynbuf, fmt, va);
-
-	append_char(&dynbuf, 0);	//terminate
-
-	#ifdef MCHEAP_ID_SECTIONS
-	dynbuf.buf = heap_reallocate_id(dynbuf.buf, dynbuf.pos+1, id_file, id_line);
-	#else
-	dynbuf.buf = heap_reallocate(dynbuf.buf, dynbuf.pos+1);
-	#endif
-
-	va_end(va);
-	return dynbuf.buf;
-};
-
-#ifdef PLATFORM_AVR
-#ifdef MCHEAP_ID_SECTIONS
-char* heap_prnf_P_id(const char* id_file, uint16_t id_line, PGM_P fmt, ...)
-#else
-char* heap_prnf_P(PGM_P fmt, ...)
-#endif
-{
-	va_list va;
-	va_start(va, fmt);
-	int 	size;
-
-	#ifdef MCHEAP_ID_SECTIONS
-	dynbuf.buf = heap_allocate_id(dynbuf.size, id_file, id_line);
-	dynbuf.id_file = id_file;
-	dynbuf.id_line = id_line;
-	#else
-	dynbuf.buf = heap_allocate(dynbuf.size);
-	#endif
-
-	vfptrprnf_P(append_char, &dynbuf, fmt, va);
-
-	append_char(&dynbuf, 0);	//terminate
-
-	#ifdef MCHEAP_ID_SECTIONS
-	dynbuf.buf = heap_reallocate_id(dynbuf.buf, dynbuf.pos+1, id_file, id_line);
-	#else
-	dynbuf.buf = heap_reallocate(dynbuf.buf, dynbuf.pos+1);
-	#endif
-
-	va_end(va);
-	return dynbuf.buf;
-};
-#endif
-#endif
-
-//********************************************************************************************************
-// Private functions
-//********************************************************************************************************
 
 //
 // Shrink used section so that it's content is reduced to the new_size.

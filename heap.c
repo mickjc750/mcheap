@@ -10,26 +10,34 @@
 	Particularly in the number of times the free list is walked for reallocations
 */
 
+	#include <string.h>
 	#include "heap.h"
 
-	#ifdef HEAP_PROVIDE_PRNF
+	#ifdef MCHEAP_PROVIDE_PRNF
 		#include "prnf.h"
 	#endif
 
-	#ifndef HEAP_NO_ASSERT
-		#include "mcassert.h"
+	#ifndef USE_MCHEAP
+		#warning "mcheap.c is being compiled, but USE_MCHEAP is not defined. Add -DUSE_MCHEAP to compiler options to indicate the presence of this alternative memory allocator."
 	#endif
 
 //********************************************************************************************************
 // Local defines
 //********************************************************************************************************
 
-	#ifndef HEAP_SIZE
-		#define HEAP_SIZE 1000
+	#ifndef MCHEAP_SIZE
+		#define MCHEAP_SIZE 1000
+		#warning "MCHEAP_SIZE not defined, using default size of 1000. Add -DMCHEAP_SIZE=<size in bytes> to compiler options."
 	#endif
 
-	#ifndef HEAP_ALIGNMENT
-		#define HEAP_ALIGNMENT 	(sizeof(void*))
+	#ifdef MCHEAP_USE_KEYS
+	#ifndef MCHEAP_TEST
+		#warning "MCHEAP_USE_KEYS should only be used in addition to MCHEAP_TEST. Add -DMCHEAP_TEST to ccompiler options, or remove MCHEAP_USE_KEYS."
+	#endif
+	#endif
+
+	#ifndef MCHEAP_ALIGNMENT
+		#define MCHEAP_ALIGNMENT 	(sizeof(void*))
 	#endif
 
 	#ifdef PLATFORM_AVR
@@ -38,31 +46,43 @@
 		#define SLMEM(arg)	(arg)
 	#endif
 
-	#ifdef HEAP_NO_ASSERT
+	#ifdef MCHEAP_NO_ASSERT
 		#define ERROR_ALLOCATION_FAIL()	while(true)
 		#define ERROR_REALLOC_FAIL()	while(true)
 		#define ERROR_FREE_STATIC()		while(true)
 		#define ERROR_REALLOC_STATIC()	while(true)
 		#define ERROR_FALSE_FREE()		while(true)
 		#define ERROR_BROKEN()			while(true)
-
-	#elif defined HEAP_ID_SECTIONS
-		#define ERROR_ALLOCATION_FAIL()	assert_handle(heap_id_file, heap_id_line, SLMEM("heap-fail-alloc"))
-		#define ERROR_REALLOC_FAIL()	assert_handle(heap_id_file, heap_id_line, SLMEM("heap-fail-realloc"))
-		#define ERROR_FREE_STATIC()		assert_handle(heap_id_file, heap_id_line, SLMEM("heap-free-static"))
-		#define ERROR_REALLOC_STATIC()	assert_handle(heap_id_file, heap_id_line, SLMEM("heap-realloc-static"))
-		#define ERROR_FALSE_FREE()		assert_handle(heap_id_file, heap_id_line, SLMEM("heap-false-free"))
-		#define ERROR_BROKEN()			assert_handle(heap_id_file, heap_id_line, SLMEM("heap-broken"))
 	#else
-		#define ERROR_ALLOCATION_FAIL()	ASSERT_MSG_SL(false, "heap-fail-alloc")
-		#define ERROR_REALLOC_FAIL()	ASSERT_MSG_SL(false, "heap-fail-realloc")
-		#define ERROR_FREE_STATIC()		ASSERT_MSG_SL(false, "heap-free-static")
-		#define ERROR_REALLOC_STATIC()	ASSERT_MSG_SL(false, "heap-realloc-static")
-		#define ERROR_FALSE_FREE()		ASSERT_MSG_SL(false, "heap-false-free")
-		#define ERROR_BROKEN()			ASSERT_MSG_SL(false, "heap-broken")
+		#ifdef USE_MCASSERT
+			#include "mcassert.h"
+			#ifdef MCHEAP_ID_SECTIONS
+				#define ERROR_ALLOCATION_FAIL()	assert_handle(heap_id_file, heap_id_line, SLMEM("heap-fail-alloc"))
+				#define ERROR_REALLOC_FAIL()	assert_handle(heap_id_file, heap_id_line, SLMEM("heap-fail-realloc"))
+				#define ERROR_FREE_STATIC()		assert_handle(heap_id_file, heap_id_line, SLMEM("heap-free-static"))
+				#define ERROR_REALLOC_STATIC()	assert_handle(heap_id_file, heap_id_line, SLMEM("heap-realloc-static"))
+				#define ERROR_FALSE_FREE()		assert_handle(heap_id_file, heap_id_line, SLMEM("heap-false-free"))
+				#define ERROR_BROKEN()			assert_handle(heap_id_file, heap_id_line, SLMEM("heap-broken"))
+			#else
+				#define ERROR_ALLOCATION_FAIL()	ASSERT_MSG_SL(false, "heap-fail-alloc")
+				#define ERROR_REALLOC_FAIL()	ASSERT_MSG_SL(false, "heap-fail-realloc")
+				#define ERROR_FREE_STATIC()		ASSERT_MSG_SL(false, "heap-free-static")
+				#define ERROR_REALLOC_STATIC()	ASSERT_MSG_SL(false, "heap-realloc-static")
+				#define ERROR_FALSE_FREE()		ASSERT_MSG_SL(false, "heap-false-free")
+				#define ERROR_BROKEN()			ASSERT_MSG_SL(false, "heap-broken")
+			#endif
+		#else
+			#include "assert.h"
+			#define ERROR_ALLOCATION_FAIL()	assert(false)
+			#define ERROR_REALLOC_FAIL()	assert(false)
+			#define ERROR_FREE_STATIC()		assert(false)
+			#define ERROR_REALLOC_STATIC()	assert(false)
+			#define ERROR_FALSE_FREE()		assert(false)
+			#define ERROR_BROKEN()			assert(false)
+		#endif
 	#endif
 
-	#ifdef HEAP_USE_KEYS
+	#ifdef MCHEAP_USE_KEYS
 	//	Misc values for testing heap integrity
 		#define	KEY_USED	((size_t)0x47B3D19C)
 		#define KEY_FREE	((size_t)0x8BA1963F)
@@ -77,33 +97,33 @@
 	// the content member must have the same name (content) in both
 	struct free_struct
 	{
-	#ifdef HEAP_USE_KEYS
+	#ifdef MCHEAP_USE_KEYS
 		size_t				key;		// key ^ size == KEY_FREE
 	#endif
 		size_t				size;		// size of empty content[] following this structure &content[size] will address the next used_struct/free_struct
-	#ifdef HEAP_ID_SECTIONS
+	#ifdef MCHEAP_ID_SECTIONS
 		const char*			id_file;	// file that freed this allocation
 		uint16_t			id_line;	// line number of file that freed this allocation
 	#endif
 		struct free_struct*	next_ptr;	// next free
 		//(insert extras here if desired)
 		// addresses memory after the structure & aligns the size of the structure
-		uint8_t		content[0] __attribute__((aligned(HEAP_ALIGNMENT)));
+		uint8_t		content[0] __attribute__((aligned(MCHEAP_ALIGNMENT)));
 	};
 
 	struct used_struct
 	{
-	#ifdef HEAP_USE_KEYS
+	#ifdef MCHEAP_USE_KEYS
 		size_t		key;				// key ^ size == KEY_USED
 	#endif
 		size_t		size;				// size of content[] following this structure &content[size] will address the next used_struct/free_struct
-	#ifdef HEAP_ID_SECTIONS
+	#ifdef MCHEAP_ID_SECTIONS
 		const char*	id_file;			// file that made this allocation
 		uint16_t	id_line;			// line number of file that made this allocation
 	#endif
 		//(insert extras here if desired)
 		// addresses memory after the structure & aligns the size of the structure
-		uint8_t		content[0] __attribute__((aligned(HEAP_ALIGNMENT)));
+		uint8_t		content[0] __attribute__((aligned(MCHEAP_ALIGNMENT)));
 	};
 
 //	Info used for searching the heap, contains a section pointer (to either type), and the next known free section
@@ -121,7 +141,7 @@
 //	arg1 must have correct type (not void*)
 	#define SECTION_AFTER(arg1)	((void*)(&(arg1)->content[(arg1)->size]))
 
-	#define END_OF_HEAP (&heap_space[HEAP_SIZE])
+	#define END_OF_HEAP (&heap_space[MCHEAP_SIZE])
 
 //	pointer casts
 	#define USEDCAST(arg1)	((struct used_struct*)(arg1))
@@ -139,10 +159,10 @@
 // Public variables
 //********************************************************************************************************
 
-	//the minimum free space which has occurred since heap_init() (requires HEAP_TRACK_STATS)
+	//the minimum free space which has occurred since heap_init() (requires MCHEAP_TRACK_STATS)
 	size_t		heap_head_room=0;	
 
-	//the current largest free section (requires HEAP_TRACK_STATS)
+	//the current largest free section (requires MCHEAP_TRACK_STATS)
 	size_t 		heap_largest_free=0;
 
 	//the current number of allocations
@@ -155,17 +175,17 @@
 // Private variables
 //********************************************************************************************************
 
-	#ifdef HEAP_ADDR
-		static uint8_t* heap_space = (uint8_t*)HEAP_ADDR;
+	#ifdef MCHEAP_ADDR
+		static uint8_t* heap_space = (uint8_t*)MCHEAP_ADDR;
 	#else
-		static uint8_t	heap_space[HEAP_SIZE] __attribute__((aligned(HEAP_ALIGNMENT)));
+		static uint8_t	heap_space[MCHEAP_SIZE] __attribute__((aligned(MCHEAP_ALIGNMENT)));
 	#endif
 
 	static bool					initialized = false;
 
 	static struct free_struct* 	first_free = (void*)heap_space;	//head of the free list
 
-	#ifdef HEAP_ID_SECTIONS
+	#ifdef MCHEAP_ID_SECTIONS
 		static const char*		heap_id_file;
 		static uint16_t			heap_id_line;
 	#endif
@@ -230,13 +250,13 @@ static void free_merge_up(struct free_struct *free_ptr);
 static struct search_point_struct find_next_used(struct search_point_struct start);
 
 // Find largest free block. Used for tracking heap headroom.
-#ifdef HEAP_TRACK_STATS
+#ifdef MCHEAP_TRACK_STATS
 	static void free_find_largest(void);
 #endif
 
 // Heap test, may be used before freeing memory, to see if the heap is intact,
 // and also that the section about to be freed is actually a used section
-#ifdef HEAP_TEST
+#ifdef MCHEAP_TEST
 	static void heap_test(struct used_struct *used_ptr);
 #endif
 
@@ -251,8 +271,8 @@ void heap_init(void)
 	static struct free_struct* free_ptr = (void*)heap_space;
 
 //	initialize free space
-	free_ptr->size 	= HEAP_SIZE - sizeof(struct free_struct);
-	#ifdef HEAP_USE_KEYS
+	free_ptr->size 	= MCHEAP_SIZE - sizeof(struct free_struct);
+	#ifdef MCHEAP_USE_KEYS
 		free_ptr->key 	= free_ptr->size ^ KEY_FREE;
 	#endif
 
@@ -262,7 +282,7 @@ void heap_init(void)
 	heap_largest_free	= free_ptr->size;
 }
 
-#ifdef HEAP_ID_SECTIONS
+#ifdef MCHEAP_ID_SECTIONS
 void* heap_allocate_id(size_t size, const char* id_file, uint16_t id_line)
 #else
 void* heap_allocate(size_t size)
@@ -272,7 +292,7 @@ void* heap_allocate(size_t size)
 	struct used_struct *used_ptr;
 	void* retval=NULL;
 
-	#ifdef HEAP_ID_SECTIONS
+	#ifdef MCHEAP_ID_SECTIONS
 		heap_id_file = id_file;
 		heap_id_line = id_line;
 	#endif
@@ -281,15 +301,15 @@ void* heap_allocate(size_t size)
 		heap_init();
 
 //	align size
-	if(size & (HEAP_ALIGNMENT-1))
-		size += HEAP_ALIGNMENT;
-	size &= ~(size_t)(HEAP_ALIGNMENT-1);
+	if(size & (MCHEAP_ALIGNMENT-1))
+		size += MCHEAP_ALIGNMENT;
+	size &= ~(size_t)(MCHEAP_ALIGNMENT-1);
 
 //	allocation must be large enough to return to the free list
 	if(sizeof(struct used_struct) + size < sizeof(struct free_struct))
 		size = sizeof(struct free_struct) - sizeof(struct used_struct);
 
-	#ifdef HEAP_TEST
+	#ifdef MCHEAP_TEST
 		heap_test(NULL);
 	#endif
 
@@ -311,7 +331,7 @@ void* heap_allocate(size_t size)
 			heap_allocations_max = heap_allocations;
 	};
 
-	#ifdef HEAP_TRACK_STATS
+	#ifdef MCHEAP_TRACK_STATS
 		free_find_largest();
 	#endif
 
@@ -321,7 +341,7 @@ void* heap_allocate(size_t size)
 //
 // 	Heap reallocate
 //
-#ifdef HEAP_ID_SECTIONS
+#ifdef MCHEAP_ID_SECTIONS
 void* heap_reallocate_id(void* section, size_t new_size, const char* id_file, uint16_t id_line)
 #else
 void* heap_reallocate(void* section, size_t new_size)
@@ -333,7 +353,7 @@ void* heap_reallocate(void* section, size_t new_size)
 	struct used_struct* new_used_ptr=NULL;
 	void* retval = NULL;
 
-	#ifdef HEAP_ID_SECTIONS
+	#ifdef MCHEAP_ID_SECTIONS
 		heap_id_file = id_file;
 		heap_id_line = id_line;
 	#endif
@@ -343,7 +363,7 @@ void* heap_reallocate(void* section, size_t new_size)
 
 	if(section == NULL)
 	{
-		#ifdef HEAP_ID_SECTIONS
+		#ifdef MCHEAP_ID_SECTIONS
 			retval = heap_allocate_id(new_size, id_file, id_line);	//if section == NULL just call heap_allocate()
 		#else
 			retval = heap_allocate(new_size);					//if section == NULL just call heap_allocate()
@@ -352,9 +372,9 @@ void* heap_reallocate(void* section, size_t new_size)
 	else
 	{
 		// align size
-		if(new_size & (HEAP_ALIGNMENT-1))
-			new_size += HEAP_ALIGNMENT;
-		new_size &= ~(size_t)(HEAP_ALIGNMENT-1);
+		if(new_size & (MCHEAP_ALIGNMENT-1))
+			new_size += MCHEAP_ALIGNMENT;
+		new_size &= ~(size_t)(MCHEAP_ALIGNMENT-1);
 
 		// allocation must be large enough to return to the free list
 		if(sizeof(struct used_struct) + new_size < sizeof(struct free_struct))
@@ -362,7 +382,7 @@ void* heap_reallocate(void* section, size_t new_size)
 
 		used_ptr = container_of(section, struct used_struct, content);
 
-		#ifdef HEAP_TEST
+		#ifdef MCHEAP_TEST
 		// fail if this is not a used section
 			heap_test(used_ptr);
 		#endif
@@ -441,14 +461,14 @@ void* heap_reallocate(void* section, size_t new_size)
 		if(!retval)
 			ERROR_REALLOC_FAIL();
 
-		#ifdef HEAP_TRACK_STATS
+		#ifdef MCHEAP_TRACK_STATS
 			free_find_largest();
 		#endif
 	};
 	return retval;
 }
 
-#ifdef HEAP_ID_SECTIONS
+#ifdef MCHEAP_ID_SECTIONS
 void* heap_free_id(void* section, const char* id_file, uint16_t id_line)
 #else
 void* heap_free(void* section)
@@ -457,14 +477,14 @@ void* heap_free(void* section)
 	struct used_struct *used_ptr;
 	struct free_struct *free_ptr;
 
-	#ifdef HEAP_ID_SECTIONS
+	#ifdef MCHEAP_ID_SECTIONS
 		heap_id_file = id_file;
 		heap_id_line = id_line;
 	#endif
 
 	if(section==NULL)
 	{
-		#ifdef HEAP_TEST
+		#ifdef MCHEAP_TEST
 			heap_test(NULL);
 		#endif
 	}
@@ -477,7 +497,7 @@ void* heap_free(void* section)
 		{
 			//in the heap
 			used_ptr = container_of(section, struct used_struct, content);
-			#ifdef HEAP_TEST
+			#ifdef MCHEAP_TEST
 				//fail if this is not a used section
 				heap_test(used_ptr);
 			#endif
@@ -486,7 +506,7 @@ void* heap_free(void* section)
 			free_insert(free_ptr);				//insert into the free list
 			free_merge(free_ptr);				//merge with adjacent free sections
 
-			#ifdef HEAP_TRACK_STATS
+			#ifdef MCHEAP_TRACK_STATS
 				free_find_largest();
 			#endif
 			heap_allocations--;
@@ -500,12 +520,12 @@ bool heap_contains(void* section)
 {
 	bool retval;
 	
-	retval = ( (heap_space < (uint8_t*)section) && ((uint8_t*)section < &heap_space[HEAP_SIZE]) );
+	retval = ( (heap_space < (uint8_t*)section) && ((uint8_t*)section < &heap_space[MCHEAP_SIZE]) );
 
 	return retval;
 }
 
-#ifdef HEAP_ID_SECTIONS
+#ifdef MCHEAP_ID_SECTIONS
 struct heap_leakid_struct heap_find_leak(void)
 {
 	struct heap_leakid_struct record = {.file_id = "", .line_id = 0, .cnt = 0};
@@ -558,10 +578,10 @@ struct heap_leakid_struct heap_find_leak(void)
 #endif
 
 
-#ifdef HEAP_PROVIDE_PRNF
+#ifdef MCHEAP_PROVIDE_PRNF
 
-#ifndef HEAP_PRNF_GROW_STEP
-	#define HEAP_PRNF_GROW_STEP 30
+#ifndef MCHEAP_PRNF_GROW_STEP
+	#define MCHEAP_PRNF_GROW_STEP 30
 #endif
 
 struct dynbuf_struct
@@ -579,18 +599,18 @@ static void append_char(void* buf, char x)
 	struct dynbuf_struct* dynbuf = (struct dynbuf_struct*)buf;
 	if(dynbuf->pos == dynbuf->size-1)
 	{
-		#ifdef HEAP_ID_SECTIONS
-		dynbuf->buf = heap_reallocate_id(dynbuf->buf, dynbuf->size+HEAP_PRNF_GROW_STEP, dynbuf->id_file, dynbuf->id_line);
+		#ifdef MCHEAP_ID_SECTIONS
+		dynbuf->buf = heap_reallocate_id(dynbuf->buf, dynbuf->size+MCHEAP_PRNF_GROW_STEP, dynbuf->id_file, dynbuf->id_line);
 		#else
-		dynbuf->buf = heap_reallocate(dynbuf->buf, dynbuf->size+HEAP_PRNF_GROW_STEP);
+		dynbuf->buf = heap_reallocate(dynbuf->buf, dynbuf->size+MCHEAP_PRNF_GROW_STEP);
 		#endif
-		dynbuf->size += HEAP_PRNF_GROW_STEP;
+		dynbuf->size += MCHEAP_PRNF_GROW_STEP;
 	};
 	dynbuf->buf[dynbuf->pos++] = x;
 	dynbuf->buf[dynbuf->pos] = 0;
 }
 
-#ifdef HEAP_ID_SECTIONS
+#ifdef MCHEAP_ID_SECTIONS
 char* heap_prnf_id(const char* id_file, uint16_t id_line, const char* fmt, ...)
 #else
 char* heap_prnf(const char* fmt, ...)
@@ -600,9 +620,9 @@ char* heap_prnf(const char* fmt, ...)
 	va_start(va, fmt);
 	struct dynbuf_struct dynbuf;
 
-	dynbuf.size = strlen(fmt)+HEAP_PRNF_GROW_STEP;
+	dynbuf.size = strlen(fmt)+MCHEAP_PRNF_GROW_STEP;
 	dynbuf.pos = 0;
-	#ifdef HEAP_ID_SECTIONS
+	#ifdef MCHEAP_ID_SECTIONS
 	dynbuf.buf = heap_allocate_id(dynbuf.size, id_file, id_line);
 	dynbuf.id_file = id_file;
 	dynbuf.id_line = id_line;
@@ -614,7 +634,7 @@ char* heap_prnf(const char* fmt, ...)
 
 	append_char(&dynbuf, 0);	//terminate
 
-	#ifdef HEAP_ID_SECTIONS
+	#ifdef MCHEAP_ID_SECTIONS
 	dynbuf.buf = heap_reallocate_id(dynbuf.buf, dynbuf.pos+1, id_file, id_line);
 	#else
 	dynbuf.buf = heap_reallocate(dynbuf.buf, dynbuf.pos+1);
@@ -625,7 +645,7 @@ char* heap_prnf(const char* fmt, ...)
 };
 
 #ifdef PLATFORM_AVR
-#ifdef HEAP_ID_SECTIONS
+#ifdef MCHEAP_ID_SECTIONS
 char* heap_prnf_P_id(const char* id_file, uint16_t id_line, PGM_P fmt, ...)
 #else
 char* heap_prnf_P(PGM_P fmt, ...)
@@ -635,7 +655,7 @@ char* heap_prnf_P(PGM_P fmt, ...)
 	va_start(va, fmt);
 	int 	size;
 
-	#ifdef HEAP_ID_SECTIONS
+	#ifdef MCHEAP_ID_SECTIONS
 	dynbuf.buf = heap_allocate_id(dynbuf.size, id_file, id_line);
 	dynbuf.id_file = id_file;
 	dynbuf.id_line = id_line;
@@ -647,7 +667,7 @@ char* heap_prnf_P(PGM_P fmt, ...)
 
 	append_char(&dynbuf, 0);	//terminate
 
-	#ifdef HEAP_ID_SECTIONS
+	#ifdef MCHEAP_ID_SECTIONS
 	dynbuf.buf = heap_reallocate_id(dynbuf.buf, dynbuf.pos+1, id_file, id_line);
 	#else
 	dynbuf.buf = heap_reallocate(dynbuf.buf, dynbuf.pos+1);
@@ -683,10 +703,10 @@ static void used_shrink(struct used_struct *used_ptr, size_t new_size)
 
 			//construct remaining free section
 			free_ptr->size = used_ptr->size - new_size - sizeof(struct free_struct);
-			#ifdef HEAP_USE_KEYS
+			#ifdef MCHEAP_USE_KEYS
 				free_ptr->key = free_ptr->size ^ KEY_FREE;
 			#endif
-			#ifdef HEAP_ID_SECTIONS
+			#ifdef MCHEAP_ID_SECTIONS
 				free_ptr->id_file = __FILE__;	//(internal ID)
 				free_ptr->id_line = __LINE__;
 			#endif
@@ -695,7 +715,7 @@ static void used_shrink(struct used_struct *used_ptr, size_t new_size)
 			used_ptr->size = new_size;
 
 			//correct used sections key
-			#ifdef HEAP_USE_KEYS
+			#ifdef MCHEAP_USE_KEYS
 				used_ptr->key 	= used_ptr->size ^ KEY_USED;
 			#endif
 
@@ -719,10 +739,10 @@ static struct free_struct* used_to_free(struct used_struct *used_ptr)
 //	Build new free section
 	free_ptr = (void*)used_ptr;
 	free_ptr->size = SECTION_SIZE(used_ptr) - sizeof(struct free_struct);
-	#ifdef HEAP_USE_KEYS
+	#ifdef MCHEAP_USE_KEYS
 		free_ptr->key = KEY_FREE ^ free_ptr->size;
 	#endif
-	#ifdef HEAP_ID_SECTIONS
+	#ifdef MCHEAP_ID_SECTIONS
 		free_ptr->id_file = heap_id_file;
 		free_ptr->id_line = heap_id_line;
 	#endif
@@ -741,10 +761,10 @@ static struct used_struct* free_to_used(struct free_struct *free_ptr)
 //	Build new used section
 	used_ptr = (void*)free_ptr;
 	used_ptr->size = SECTION_SIZE(free_ptr) - sizeof(struct used_struct);
-	#ifdef HEAP_USE_KEYS
+	#ifdef MCHEAP_USE_KEYS
 		used_ptr->key = KEY_USED ^ used_ptr->size;
 	#endif
-	#ifdef HEAP_ID_SECTIONS
+	#ifdef MCHEAP_ID_SECTIONS
 		used_ptr->id_file = heap_id_file;
 		used_ptr->id_line = heap_id_line;
 	#endif
@@ -777,7 +797,7 @@ static struct used_struct* used_extend_down(struct free_struct *free_ptr, struct
 	used_ptr->size += extra_size;
 
 //	correct used sections key
-	#ifdef HEAP_USE_KEYS
+	#ifdef MCHEAP_USE_KEYS
 		used_ptr->key = used_ptr->size ^ KEY_USED;
 	#endif
 
@@ -798,7 +818,7 @@ static struct used_struct* used_extend_up(struct used_struct *used_ptr)
 
 	used_ptr->size += ext_size;
 
-	#ifdef HEAP_USE_KEYS
+	#ifdef MCHEAP_USE_KEYS
 		used_ptr->key = used_ptr->size ^ KEY_USED;
 	#endif
 
@@ -923,7 +943,7 @@ static void free_merge_up(struct free_struct *free_ptr)
 			free_ptr->size += SECTION_SIZE(free_ptr->next_ptr);
 
 			//correct extended sections key, and destroy next free sections key
-			#ifdef HEAP_USE_KEYS
+			#ifdef MCHEAP_USE_KEYS
 				free_ptr->key 	= free_ptr->size ^ KEY_FREE;
 				free_ptr->next_ptr->key = KEY_MERGED;
 			#endif
@@ -974,7 +994,7 @@ static struct search_point_struct find_next_used(struct search_point_struct star
 //
 // Find largest free block. Used for tracking heap headroom.
 //
-#ifdef HEAP_TRACK_STATS
+#ifdef MCHEAP_TRACK_STATS
 static void free_find_largest(void)
 {
 	struct free_struct *free_ptr;
@@ -1005,9 +1025,9 @@ static void free_find_largest(void)
 // Heap test, may be used before freeing memory, to see if the heap is intact,
 // and also that the section about to be freed is actually a used section
 //
-#ifdef HEAP_TEST
+#ifdef MCHEAP_TEST
 	static void heap_test(struct used_struct *used_ptr)	
-	#ifdef HEAP_USE_KEYS
+	#ifdef MCHEAP_USE_KEYS
 {
 	struct free_struct *next_free_ptr;
 	void* section_ptr;
@@ -1016,7 +1036,7 @@ static void free_find_largest(void)
 	next_free_ptr = first_free;
 	section_ptr = heap_space;
 
-	while(section_ptr != &heap_space[HEAP_SIZE])
+	while(section_ptr != &heap_space[MCHEAP_SIZE])
 	{
 		//if this is a free section
 		if(FREECAST(section_ptr)->key == (KEY_FREE ^ FREECAST(section_ptr)->size))
@@ -1052,7 +1072,7 @@ static void free_find_largest(void)
 	next_free_ptr = first_free;
 	section_ptr = heap_space;
 
-	while(section_ptr != &heap_space[HEAP_SIZE])
+	while(section_ptr != &heap_space[MCHEAP_SIZE])
 	{
 		//free section?
 		if(section_ptr == (void*)next_free_ptr)
@@ -1071,7 +1091,7 @@ static void free_find_largest(void)
 			section_ptr += SECTION_SIZE(USEDCAST(section_ptr));
 		};
 
-		if((uint8_t*)section_ptr < heap_space || (uint8_t*)section_ptr > &heap_space[HEAP_SIZE])
+		if((uint8_t*)section_ptr < heap_space || (uint8_t*)section_ptr > &heap_space[MCHEAP_SIZE])
 			ERROR_BROKEN();
 	};
 	if(used_ptr && !used_found)

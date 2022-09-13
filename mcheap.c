@@ -49,36 +49,36 @@
 	#ifdef MCHEAP_NO_ASSERT
 		#define ERROR_ALLOCATION_FAIL()	while(true)
 		#define ERROR_REALLOC_FAIL()	while(true)
-		#define ERROR_FREE_STATIC()		while(true)
-		#define ERROR_REALLOC_STATIC()	while(true)
+		#define ERROR_FREE_EXTERNAL()		while(true)
+		#define ERROR_REALLOC_EXTERNAL()	while(true)
 		#define ERROR_FALSE_FREE()		while(true)
 		#define ERROR_BROKEN()			while(true)
 	#else
 		#ifdef USE_MCASSERT
 			#include "mcassert.h"
 			#ifdef MCHEAP_ID_SECTIONS
-				#define ERROR_ALLOCATION_FAIL()	assert_handle(heap_id_file, heap_id_line, SLMEM("heap-fail-alloc"))
-				#define ERROR_REALLOC_FAIL()	assert_handle(heap_id_file, heap_id_line, SLMEM("heap-fail-realloc"))
-				#define ERROR_FREE_STATIC()		assert_handle(heap_id_file, heap_id_line, SLMEM("heap-free-static"))
-				#define ERROR_REALLOC_STATIC()	assert_handle(heap_id_file, heap_id_line, SLMEM("heap-realloc-static"))
-				#define ERROR_FALSE_FREE()		assert_handle(heap_id_file, heap_id_line, SLMEM("heap-false-free"))
-				#define ERROR_BROKEN()			assert_handle(heap_id_file, heap_id_line, SLMEM("heap-broken"))
+				#define ERROR_ALLOCATION_FAIL()		assert_handle(heap_id_file, heap_id_line, SLMEM("heap-fail-alloc"))
+				#define ERROR_REALLOC_FAIL()		assert_handle(heap_id_file, heap_id_line, SLMEM("heap-fail-realloc"))
+				#define ERROR_FREE_EXTERNAL()		assert_handle(heap_id_file, heap_id_line, SLMEM("heap-free-external"))
+				#define ERROR_REALLOC_EXTERNAL()	assert_handle(heap_id_file, heap_id_line, SLMEM("heap-realloc-external"))
+				#define ERROR_FALSE_FREE()			assert_handle(heap_id_file, heap_id_line, SLMEM("heap-false-free"))
+				#define ERROR_BROKEN()				assert_handle(heap_id_file, heap_id_line, SLMEM("heap-broken"))
 			#else
-				#define ERROR_ALLOCATION_FAIL()	ASSERT_MSG_SL(false, "heap-fail-alloc")
-				#define ERROR_REALLOC_FAIL()	ASSERT_MSG_SL(false, "heap-fail-realloc")
-				#define ERROR_FREE_STATIC()		ASSERT_MSG_SL(false, "heap-free-static")
-				#define ERROR_REALLOC_STATIC()	ASSERT_MSG_SL(false, "heap-realloc-static")
-				#define ERROR_FALSE_FREE()		ASSERT_MSG_SL(false, "heap-false-free")
-				#define ERROR_BROKEN()			ASSERT_MSG_SL(false, "heap-broken")
+				#define ERROR_ALLOCATION_FAIL()		ASSERT_MSG_SL(false, "heap-fail-alloc")
+				#define ERROR_REALLOC_FAIL()		ASSERT_MSG_SL(false, "heap-fail-realloc")
+				#define ERROR_FREE_EXTERNAL()		ASSERT_MSG_SL(false, "heap-free-external")
+				#define ERROR_REALLOC_EXTERNAL()	ASSERT_MSG_SL(false, "heap-realloc-external")
+				#define ERROR_FALSE_FREE()			ASSERT_MSG_SL(false, "heap-false-free")
+				#define ERROR_BROKEN()				ASSERT_MSG_SL(false, "heap-broken")
 			#endif
 		#else
 			#include "assert.h"
-			#define ERROR_ALLOCATION_FAIL()	assert(false)
-			#define ERROR_REALLOC_FAIL()	assert(false)
-			#define ERROR_FREE_STATIC()		assert(false)
-			#define ERROR_REALLOC_STATIC()	assert(false)
-			#define ERROR_FALSE_FREE()		assert(false)
-			#define ERROR_BROKEN()			assert(false)
+			#define ERROR_ALLOCATION_FAIL()		assert(false)
+			#define ERROR_REALLOC_FAIL()		assert(false)
+			#define ERROR_FREE_EXTERNAL()		assert(false)
+			#define ERROR_REALLOC_EXTERNAL()	assert(false)
+			#define ERROR_FALSE_FREE()			assert(false)
+			#define ERROR_BROKEN()				assert(false)
 		#endif
 	#endif
 
@@ -540,7 +540,7 @@ static void* reallocate(void* section, size_t new_size)
 		initialize();
 
 	if(!heap_contains(section))
-		ERROR_REALLOC_STATIC();
+		ERROR_REALLOC_EXTERNAL();
 
 	if(section == NULL)
 	{
@@ -663,7 +663,7 @@ static void* internal_free(void* section)
 	{
 		// not null, is it in the heap?
 		if(!heap_contains(section))
-			ERROR_FREE_STATIC();
+			ERROR_FREE_EXTERNAL();
 		else
 		{
 			//in the heap

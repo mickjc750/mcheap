@@ -135,10 +135,10 @@ Error handling:
 	Re-allocation failure.
 		heap_reallocate() fails.
 
-	Free static.
+	Free external.
 		An address was passed to heap_free() which is not inside the heap space.
 
-	Reallocate static.
+	Reallocate external.
 		An address was passed to heap_reallocate() which is not inside the heap space.
 
 	False free (requires HEAP_TEST)

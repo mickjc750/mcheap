@@ -38,12 +38,12 @@
 	#endif
 
 	#ifdef MCHEAP_NO_ASSERT
-		#define ERROR_ALLOCATION_FAIL()	while(true)
-		#define ERROR_REALLOC_FAIL()	while(true)
+		#define ERROR_ALLOCATION_FAIL()		while(true)
+		#define ERROR_REALLOC_FAIL()		while(true)
 		#define ERROR_FREE_EXTERNAL()		while(true)
 		#define ERROR_REALLOC_EXTERNAL()	while(true)
-		#define ERROR_FALSE_FREE()		while(true)
-		#define ERROR_BROKEN()			while(true)
+		#define ERROR_FALSE_FREE()			while(true)
+		#define ERROR_BROKEN()				while(true)
 	#else
 		#ifdef USE_MCASSERT
 			#include "mcassert.h"
@@ -169,8 +169,10 @@
 // Private variables
 //********************************************************************************************************
 
-	#ifdef MCHEAP_ADDR
-		static uint8_t* heap_space = (uint8_t*)MCHEAP_ADDR;
+	#ifdef MCHEAP_ADDRESS
+		static uint8_t* heap_space = (uint8_t*)MCHEAP_ADDRESS;
+	#elif defined MCHEAP_RUNTIME_ADDRESS
+		static uint8_t* heap_space = NULL;
 	#else
 		static uint8_t	heap_space[MCHEAP_SIZE] __attribute__((aligned(MCHEAP_ALIGNMENT)));
 	#endif
@@ -265,6 +267,18 @@
 //********************************************************************************************************
 // Public functions
 //********************************************************************************************************
+
+#ifdef MCHEAP_RUNTIME_ADDRESS
+void heap_init(void* addr)
+{
+	if(!heap_space)
+	{
+		heap_space = addr;
+		initialize();
+	};
+}
+#endif
+
 
 #ifdef MCHEAP_ID_SECTIONS
 void* heap_allocate_id(size_t size, const char* id_file, uint16_t id_line)
@@ -520,6 +534,11 @@ char* heap_vprnf_P(PGM_P fmt, va_list va)
 
 static void initialize(void)
 {
+	#ifdef MCHEAP_RUNTIME_ADDRESS
+	if(heap_space == NULL)
+		ERROR_NO_INIT();
+	#endif
+
 	initialized=true;
 	static struct free_struct* free_ptr = (void*)heap_space;
 

@@ -53,10 +53,16 @@ MCHEAP_ALIGNMENT
 	If this is not defined, the default is sizeof(void*)
 
 
-MCHEAP_ADDR
+MCHEAP_ADDRESS
 	Specify a fixed memory address for the heap. This is useful for parts which may have external RAM not covered by the linker script.
  	If this is not defined, the heap space will simply be a static uint8_t[] within the BSS section.
  	**CAUTION** If this is used, the address provided MUST respect the MCHEAP_ALIGNMENT provided, or an alignment of sizeof(void*).
+
+
+MCHEAP_RUNTIME_ADDRESS
+	Initialize mcheap with an address determined at runtime. This can be used to run mcheap within another memory allocator such as malloc().
+	The address must be passed to heap_init() once before any other heap_ call is made.
+	The address passed must have MCHEAP_SIZE bytes available, and respect MCHEAP_ALIGNMENT.
 
 
 MCHEAP_PRNF_GROW_STEP

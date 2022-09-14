@@ -1,13 +1,4 @@
 /*
- 	Dynamic memory allocator.
-	Fully tested.
-
-	Not intended to be high performance, low overhead, or have a low memory footprint.
-	It is intended to be a safe alternative to malloc() and free(),
-	 by vigilant run time testing of the heap space, and catching errors with the ERROR_x macros.
-
-	There are performance improvements that could be made at the cost of source complexity.
-	Particularly in the number of times the free list is walked for reallocations
 */
 
 	#include <string.h>
@@ -62,6 +53,7 @@
 				#define ERROR_FREE_EXTERNAL()		assert_handle(heap_id_file, heap_id_line, SLMEM("heap-free-external"))
 				#define ERROR_REALLOC_EXTERNAL()	assert_handle(heap_id_file, heap_id_line, SLMEM("heap-realloc-external"))
 				#define ERROR_FALSE_FREE()			assert_handle(heap_id_file, heap_id_line, SLMEM("heap-false-free"))
+				#define ERROR_FALSE_REALLOC()		assert_handle(heap_id_file, heap_id_line, SLMEM("heap-false-realloc"))
 				#define ERROR_BROKEN()				assert_handle(heap_id_file, heap_id_line, SLMEM("heap-broken"))
 			#else
 				#define ERROR_ALLOCATION_FAIL()		ASSERT_MSG_SL(false, "heap-fail-alloc")
@@ -69,6 +61,7 @@
 				#define ERROR_FREE_EXTERNAL()		ASSERT_MSG_SL(false, "heap-free-external")
 				#define ERROR_REALLOC_EXTERNAL()	ASSERT_MSG_SL(false, "heap-realloc-external")
 				#define ERROR_FALSE_FREE()			ASSERT_MSG_SL(false, "heap-false-free")
+				#define ERROR_FALSE_REALLOC()		ASSERT_MSG_SL(false, "heap-false-realloc")
 				#define ERROR_BROKEN()				ASSERT_MSG_SL(false, "heap-broken")
 			#endif
 		#else
@@ -78,6 +71,7 @@
 			#define ERROR_FREE_EXTERNAL()		assert(false)
 			#define ERROR_REALLOC_EXTERNAL()	assert(false)
 			#define ERROR_FALSE_FREE()			assert(false)
+			#define ERROR_FALSE_REALLOC()		assert(false)
 			#define ERROR_BROKEN()				assert(false)
 		#endif
 	#endif
@@ -584,7 +578,8 @@ static void* reallocate(void* section, size_t new_size)
 
 		#ifdef MCHEAP_TEST
 		// fail if this is not a used section
-			heap_test(used_ptr);
+		if(!heap_test(used_ptr))
+			ERROR_FALSE_REALLOC();
 		#endif
 
 		// find space for new allocation
@@ -692,8 +687,8 @@ static void* internal_free(void* section)
 			//in the heap
 			used_ptr = container_of(section, struct used_struct, content);
 			#ifdef MCHEAP_TEST
-				//fail if this is not a used section
-				heap_test(used_ptr);
+			if(!heap_test(used_ptr))
+				ERROR_FALSE_FREE();
 			#endif
 			
 			free_ptr = used_to_free(used_ptr);	//convert to free section
@@ -1086,8 +1081,7 @@ static void free_find_largest(void)
 		else
 			ERROR_BROKEN();
 	};
-	if(used_ptr && !used_found)
-		ERROR_FALSE_FREE();
+	return !(used_ptr && !used_found);
 }
 	#else
 {
@@ -1120,8 +1114,7 @@ static void free_find_largest(void)
 		if((uint8_t*)section_ptr < heap_space || (uint8_t*)section_ptr > &heap_space[MCHEAP_SIZE])
 			ERROR_BROKEN();
 	};
-	if(used_ptr && !used_found)
-		ERROR_FALSE_FREE();
+	return !(used_ptr && !used_found);
 }
 	#endif
 #endif

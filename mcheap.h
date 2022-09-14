@@ -1,6 +1,17 @@
 /*
 
- he following symbols may be defined to configure heap features:
+ 	MCHEAP Dynamic memory allocator.
+	********************************
+
+	An alternative to malloc() and free(), which provides a number of runtime integrity checking options, and some diagnostic features.
+	With minimal options enabled, the memory overhead is no larger than malloc/free.
+
+
+
+Configuration
+*************
+
+ The following symbols may be defined to configure heap features:
 
 
 MCHEAP_PROVIDE_PRNF
@@ -11,8 +22,8 @@ MCHEAP_PROVIDE_PRNF
 MCHEAP_ID_SECTIONS
 	Includes __FILE__ and __LINE__ information to each call of heap_allocate() heap_free() heap_reallocate() and even heap_prnf_SL() 
 	This can be used for detecting memory leaks with heap_find_leak()
-	It will also pass the __FILE__ and __LINE__ information directly to the assertion handler (mcassert.h)
-	The message passed to the assertion handler will describe the nature of the fault.
+	If using mcassert.h (-DUSE_MCASSERT), in the event of an error it will also pass the __FILE__ and __LINE__ info directly to the assert handler.
+	The memory overhead is typically 6-8 bytes on a 32bit system, or 4 bytes on an 8bit system.
 
 
 MCHEAP_TRACK_STATS  
@@ -22,14 +33,15 @@ MCHEAP_TRACK_STATS
 
 MCHEAP_TEST
 	Test the entire heap integrity before any heap operation.
-	Additionally, each free or reallocate operation, will test that the given address is actually a used section.
-	To test the heap without allocating or freeing, call heap_free(NULL), or reallocate an existing allocation.
+	Additionally, each free or reallocate operation, will test that the given address is actually an allocation.
+	To test the heap without allocating or freeing, call heap_free(NULL).
 	See 'Error handling' below for a description of the types errors caught.
 
 
 MCHEAP_USE_KEYS
   	Insert key values at the start of each section (both free and allocated) for integrity checking.
  	The keys will only be tested if MCHEAP_TEST is defined.
+	Adds a sizeof(size_t) overhead to each allocation.
 
 
 MCHEAP_SIZE
@@ -43,9 +55,8 @@ MCHEAP_ALIGNMENT
 
 MCHEAP_ADDR
 	Specify a fixed memory address for the heap. This is useful for parts which may have external RAM not covered by the linker script.
- 	If this is not defined, the heap space will simply be a static uint8_t[] within the usual BSS section
- 	**CAUTION** If this is used, the address provided must respect the MCHEAP_ALIGNMENT provided, or an alignment of sizeof(void*).
- 	This is NOT tested during compilation.
+ 	If this is not defined, the heap space will simply be a static uint8_t[] within the BSS section.
+ 	**CAUTION** If this is used, the address provided MUST respect the MCHEAP_ALIGNMENT provided, or an alignment of sizeof(void*).
 
 
 MCHEAP_PRNF_GROW_STEP
@@ -95,19 +106,20 @@ MCHEAP_NO_ASSERT
 
 		Provide formatted printing to memory allocated on the heap.
 		If cross platform compatibility with AVR is not required heap_prnf() may be used directly.
+
 		This is done via a simple implementation of a dynamic buffer, which starts as the same size as the format string +30 bytes.
 		Each character which exceeds the buffer grows the buffer by a further 30 bytes. When the operation is complete,
 		the buffer is shrunk to the size required. The execution overhead of this should be considered if printed output significantly
 		exceeds the length of the format string.
 		If it is desired to tweak the grow step of 30 bytes to some other value, MCHEAP_PRNF_GROW_STEP may be defined.
 		Smaller values will reduce the heap memory used during the operation (but not the end result),
-		but will increase the number of resizing operations.
+		 but will increase the number of resizing operations.
 		Conversely, larger values will require more heap space during the operation, but will reduce the number of resizing operations.
 
 
 *********************************
 Status variables:
- 	The following public status variables are available
+ 	The following status variables are available
 	
 	size_t heap_head_room
 		The minimum free space which has occurred  (requires MCHEAP_TRACK_STATS)
@@ -142,8 +154,11 @@ Error handling:
 		An address was passed to heap_reallocate() which is not inside the heap space.
 
 	False free (requires HEAP_TEST)
-		An address is passed to heap_free() or heap_reallocate(), which is not a previous allocation.
+		An address is passed to heap_free(), which is not an allocation.
 	
+	False reallocate (requires HEAP_TEST)
+		An address is passed to heap_reallocate(), which is not an allocation.
+
 	Heap broken (requires HEAP_TEST)
 		The heap integrity test failed. The application has written outside of it's allocation.
 
@@ -226,8 +241,6 @@ Error handling:
 // Public prototypes
 //********************************************************************************************************
 
-	void 		heap_init(void);
-
 	#ifdef	MCHEAP_ID_SECTIONS
 		void*	heap_allocate_id(size_t size, const char* id_file, uint16_t id_line);
 		void*	heap_reallocate_id(void* org_section, size_t size, const char* id_file, uint16_t id_line);
@@ -264,7 +277,7 @@ Error handling:
 //	Can be used for listing current heap allocations
 //	Return information about the n'th allocation in the heap
 //	n should be from 0 to heap_allocations-1
-//	If it is outside of this range, heap_list returns 0/NULL in all members 
+//	If it is outside of this range, heap_list returns 0/NULL in all members
 	struct heap_list_struct heap_list(unsigned int n);
 
 	#endif

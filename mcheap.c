@@ -66,13 +66,13 @@
 			#endif
 		#else
 			#include "assert.h"
-			#define ERROR_ALLOCATION_FAIL()		assert(false)
-			#define ERROR_REALLOC_FAIL()		assert(false)
-			#define ERROR_FREE_EXTERNAL()		assert(false)
-			#define ERROR_REALLOC_EXTERNAL()	assert(false)
-			#define ERROR_FALSE_FREE()			assert(false)
-			#define ERROR_FALSE_REALLOC()		assert(false)
-			#define ERROR_BROKEN()				assert(false)
+			#define ERROR_ALLOCATION_FAIL()		assert(!"heap-fail-alloc")
+			#define ERROR_REALLOC_FAIL()		assert(!"heap-fail-realloc")
+			#define ERROR_FREE_EXTERNAL()		assert(!"heap-free-external")
+			#define ERROR_REALLOC_EXTERNAL()	assert(!"heap-realloc-external")
+			#define ERROR_FALSE_FREE()			assert(!"heap-false-free")
+			#define ERROR_FALSE_REALLOC()		assert(!"heap-false-realloc")
+			#define ERROR_BROKEN()				assert(!"heap-broken")
 		#endif
 	#endif
 

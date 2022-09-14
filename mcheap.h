@@ -170,6 +170,7 @@ Error handling:
 	#include <stdint.h>
 	#include <stdbool.h>
 	#include <stddef.h>
+	#include <stdarg.h>
 
 //********************************************************************************************************
 // Public defines
@@ -255,13 +256,17 @@ Error handling:
 		#ifdef MCHEAP_ID_SECTIONS
 			#ifdef PLATFORM_AVR
 				char* heap_prnf_P_id(PGM_P id_file, uint16_t id_line, PGM_P fmt, ...);
+				char* heap_vprnf_P_id(PGM_P id_file, uint16_t id_line, PGM_P fmt, va_list va);
 			#endif
 			char* heap_prnf_id(const char* id_file, uint16_t id_line, const char* fmt, ...) __attribute__((format(printf, 3, 4)));
+			char* heap_vprnf_id(const char* id_file, uint16_t id_line, const char* fmt, va_list va);
 		#else
 			#ifdef PLATFORM_AVR
 				char* heap_prnf_P(PGM_P fmt, ...);
+				char* heap_vprnf_P(PGM_P fmt, va_list va);
 			#endif
 			char* heap_prnf(const char* fmt, ...) __attribute__((format(printf, 1, 2)));
+			char* heap_vprnf(const char* fmt, va_list va);
 		#endif
 	#endif
 

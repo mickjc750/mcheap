@@ -428,8 +428,26 @@ char* heap_prnf_id(const char* id_file, uint16_t id_line, const char* fmt, ...)
 char* heap_prnf(const char* fmt, ...)
 #endif
 {
+	char* retval;
 	va_list va;
 	va_start(va, fmt);
+
+	#ifdef MCHEAP_ID_SECTIONS
+	retval = heap_vprnf_id(id_file, id_line, fmt, va);
+	#else
+	retval = heap_vprnf(fmt, va);
+	#endif
+
+	va_end(va);
+	return retval;
+}
+
+#ifdef MCHEAP_ID_SECTIONS
+char* heap_vprnf_id(const char* id_file, uint16_t id_line, const char* fmt, va_list va)
+#else
+char* heap_vprnf(const char* fmt, va_list va)
+#endif
+{
 	struct dynbuf_struct dynbuf;
 
 	#ifdef MCHEAP_ID_SECTIONS
@@ -445,7 +463,6 @@ char* heap_prnf(const char* fmt, ...)
 	append_char(&dynbuf, 0);	//terminate
 	dynbuf.buf = reallocate(dynbuf.buf, dynbuf.pos+1);
 
-	va_end(va);
 	return dynbuf.buf;
 };
 
@@ -456,25 +473,45 @@ char* heap_prnf_P_id(const char* id_file, uint16_t id_line, PGM_P fmt, ...)
 char* heap_prnf_P(PGM_P fmt, ...)
 #endif
 {
+	char* retval;
 	va_list va;
 	va_start(va, fmt);
-	int 	size;
+
+	#ifdef MCHEAP_ID_SECTIONS
+	retval = heap_vprnf_P_id(id_file, id_line, fmt, va);
+	#else
+	retval = heap_vprnf_P(fmt, va);
+	#endif
+	
+	va_end(va);
+	return retval;
+};
+#endif
+
+#ifdef MCHEAP_ID_SECTIONS
+char* heap_vprnf_P_id(const char* id_file, uint16_t id_line, PGM_P fmt, va_list va)
+#else
+char* heap_vprnf_P(PGM_P fmt, va_list va)
+#endif
+{
+	struct dynbuf_struct dynbuf;
 
 	#ifdef MCHEAP_ID_SECTIONS
 		heap_id_file = id_file;
 		heap_id_line = id_line;
 	#endif
 
+	dynbuf.size = strlen_P(fmt)+MCHEAP_PRNF_GROW_STEP;
+	dynbuf.pos = 0;
 	dynbuf.buf = allocate(dynbuf.size);
 
 	vfptrprnf_P(append_char, &dynbuf, fmt, va);
 	append_char(&dynbuf, 0);	//terminate
 	dynbuf.buf = reallocate(dynbuf.buf, dynbuf.pos+1);
 
-	va_end(va);
 	return dynbuf.buf;
-};
-#endif
+}
+
 #endif
 
 //********************************************************************************************************

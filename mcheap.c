@@ -11,14 +11,14 @@
 */
 
 	#include <string.h>
-	#include "heap.h"
+	#include "mcheap.h"
 
 	#ifdef MCHEAP_PROVIDE_PRNF
 		#include "prnf.h"
 	#endif
 
 	#ifndef USE_MCHEAP
-		#warning "mcheap.c is being compiled, but USE_MCHEAP is not defined. Add -DUSE_MCHEAP to compiler options to indicate the presence of this alternative memory allocator."
+		#warning "mcheap.c is being compiled, but USE_MCHEAP is not defined. Add -DUSE_MCHEAP to compiler options, to indicate the availability of mcheap to other modules."
 	#endif
 
 //********************************************************************************************************
@@ -32,7 +32,7 @@
 
 	#ifdef MCHEAP_USE_KEYS
 	#ifndef MCHEAP_TEST
-		#warning "MCHEAP_USE_KEYS should only be used in addition to MCHEAP_TEST. Add -DMCHEAP_TEST to ccompiler options, or remove MCHEAP_USE_KEYS."
+		#warning "MCHEAP_USE_KEYS should only be used in addition to MCHEAP_TEST. Add -DMCHEAP_TEST to compiler options, or remove MCHEAP_USE_KEYS."
 	#endif
 	#endif
 
@@ -315,7 +315,6 @@ void* heap_free(void* section)
 	return internal_free(section);
 }
 
-
 //return true if pointer is within the heap
 bool heap_contains(void* section)
 {
@@ -327,6 +326,29 @@ bool heap_contains(void* section)
 }
 
 #ifdef MCHEAP_ID_SECTIONS
+struct heap_list_struct heap_list(unsigned int n)
+{
+	struct heap_list_struct retval = {.file_id = NULL, .line_id = 0, .size = 0, .content = NULL,};
+	struct search_point_struct search_base;
+
+	search_base.section_ptr = heap_space;
+	search_base.next_free_ptr = first_free;
+	if(heap_space == first_free)
+		search_base = find_next_used(search_base);
+
+	while(n-- && search_base.section_ptr != END_OF_HEAP)
+		search_base = find_next_used(search_base);
+
+	if(search_base.section_ptr != END_OF_HEAP)
+	{
+		retval.file_id 	= USEDCAST(search_base.section_ptr)->id_file;
+		retval.line_id 	= USEDCAST(search_base.section_ptr)->id_line;
+		retval.size 	= USEDCAST(search_base.section_ptr)->size;
+		retval.content 	= USEDCAST(search_base.section_ptr)->content;
+	};
+	return retval;
+}
+
 struct heap_leakid_struct heap_find_leak(void)
 {
 	struct heap_leakid_struct record = {.file_id = "", .line_id = 0, .cnt = 0};
@@ -341,6 +363,7 @@ struct heap_leakid_struct heap_find_leak(void)
 	search_base.section_ptr = heap_space;
 	search_base.next_free_ptr = first_free;
 
+//	if(heap_space == first_free)  todo: should thi next line be conditional?? what if the first section is used? it should be counted
 	search_base = find_next_used(search_base);
 
 	while(search_base.section_ptr != END_OF_HEAP && found_next_id)

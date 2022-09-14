@@ -189,12 +189,22 @@ Error handling:
 		#endif
 	#endif
 
+	#ifdef MCHEAP_ID_SECTIONS
 	struct heap_leakid_struct
 	{
 		const char* file_id;
 		uint16_t	line_id;
 		uint32_t	cnt;
 	};
+
+	struct heap_list_struct
+	{
+		const char* file_id;
+		uint16_t	line_id;
+		size_t		size;
+		void*		content;
+	};
+	#endif
 
 //********************************************************************************************************
 // Public variables
@@ -245,8 +255,18 @@ Error handling:
 	//return true if address is within heap space
 	bool	heap_contains(void* address);
 
-	//return id of the caller which currently has the most allacations in the heap
-	//requires MCHEAP_ID_SECTIONS, otherwise returns 0,0,0
+	#ifdef MCHEAP_ID_SECTIONS
+
+	//return id of the caller which currently has the most allocations in the heap
+	//requires MCHEAP_ID_SECTIONS
 	struct heap_leakid_struct heap_find_leak(void);
+
+//	Can be used for listing current heap allocations
+//	Return information about the n'th allocation in the heap
+//	n should be from 0 to heap_allocations-1
+//	If it is outside of this range, heap_list returns 0/NULL in all members 
+	struct heap_list_struct heap_list(unsigned int n);
+
+	#endif
 
 #endif

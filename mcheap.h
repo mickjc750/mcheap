@@ -73,6 +73,14 @@ MCHEAP_PRNF_GROW_STEP
 MCHEAP_NO_ASSERT
 	Do not use mcassert.h or assert.h for error handling. Errors will simply hang in an infinite loop.
 
+MCHEAP_PROVIDE_STDLIB_FUNCTIONS
+	Provides malloc() calloc() realloc() and free()
+	If MCHEAP_TRACK_STATS is enabled:
+		malloc() and calloc() will return NULL on failure, instead of calling the error handler.
+		realloc() will return null if the remaining free space is less than the new size, even though reallocation may still be possible.
+
+MCHEAP_USE_POSIX_MUTEX_LOCK
+	Top level functions will use a mutex from pthread.h to provide thread safety.
 
  *********************************
  Usage:
@@ -178,6 +186,10 @@ Error handling:
 	#include <stddef.h>
 	#include <stdarg.h>
 
+	#ifdef PLATFORM_AVR
+		#include <avr/pgmspace.h>
+	#endif
+
 //********************************************************************************************************
 // Public defines
 //********************************************************************************************************
@@ -232,11 +244,13 @@ Error handling:
 // Public variables
 //********************************************************************************************************
 
+#ifdef MCHEAP_TRACK_STATS
 	//the minimum free space which has occurred since heap_init() (requires TRACK_STATS)
 	extern size_t	heap_head_room;	
 
-	//the current largest free allocatable size (requires TRACK_STATS)
+	//the current largest allocation possible (requires MCHEAP_TRACK_STATS)
 	extern size_t 	heap_largest_free;
+#endif
 
 	//the current number of allocations
 	extern uint32_t	heap_allocations;
@@ -247,6 +261,17 @@ Error handling:
 //********************************************************************************************************
 // Public prototypes
 //********************************************************************************************************
+
+	#ifdef MCHEAP_RUNTIME_ADDRESS
+		void heap_init(void* addr);
+	#endif
+
+	#ifdef MCHEAP_PROVIDE_STDLIB_FUNCTIONS
+		void* malloc(size_t size);
+		void* calloc(size_t n, size_t size);
+		void *realloc(void *ptr, size_t size);
+		void free(void* ptr);
+	#endif
 
 	#ifdef	MCHEAP_ID_SECTIONS
 		void*	heap_allocate_id(size_t size, const char* id_file, uint16_t id_line);

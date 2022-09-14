@@ -1,6 +1,5 @@
 /*
 */
-
 	#include <string.h>
 	#include "mcheap.h"
 
@@ -31,6 +30,14 @@
 		#define MCHEAP_ALIGNMENT 	(sizeof(void*))
 	#endif
 
+	#ifdef MCHEAP_USE_POSIX_MUTEX_LOCK
+		#define APPIF_ENTER()	pthread_mutex_lock(&mutex);
+		#define APPIF_EXIT()	pthread_mutex_unlock(&mutex);
+	#else
+		#define APPIF_ENTER()	(void)0
+		#define APPIF_EXIT()	(void)0
+	#endif
+
 	#ifdef PLATFORM_AVR
 		#define SLMEM(arg)	PSTR(arg)
 	#else
@@ -55,6 +62,7 @@
 				#define ERROR_FALSE_FREE()			assert_handle(heap_id_file, heap_id_line, SLMEM("heap-false-free"))
 				#define ERROR_FALSE_REALLOC()		assert_handle(heap_id_file, heap_id_line, SLMEM("heap-false-realloc"))
 				#define ERROR_BROKEN()				assert_handle(heap_id_file, heap_id_line, SLMEM("heap-broken"))
+				#define ERROR_NO_INIT()				assert_handle(heap_id_file, heap_id_line, SLMEM("heap-no-init"))
 			#else
 				#define ERROR_ALLOCATION_FAIL()		ASSERT_MSG_SL(false, "heap-fail-alloc")
 				#define ERROR_REALLOC_FAIL()		ASSERT_MSG_SL(false, "heap-fail-realloc")
@@ -63,6 +71,7 @@
 				#define ERROR_FALSE_FREE()			ASSERT_MSG_SL(false, "heap-false-free")
 				#define ERROR_FALSE_REALLOC()		ASSERT_MSG_SL(false, "heap-false-realloc")
 				#define ERROR_BROKEN()				ASSERT_MSG_SL(false, "heap-broken")
+				#define ERROR_NO_INIT()				ASSERT_MSG_SL(false, "heap-no-init")
 			#endif
 		#else
 			#include "assert.h"
@@ -73,6 +82,7 @@
 			#define ERROR_FALSE_FREE()			assert(!"heap-false-free")
 			#define ERROR_FALSE_REALLOC()		assert(!"heap-false-realloc")
 			#define ERROR_BROKEN()				assert(!"heap-broken")
+			#define ERROR_NO_INIT()				assert(!"heap-no-init")
 		#endif
 	#endif
 
@@ -153,11 +163,13 @@
 // Public variables
 //********************************************************************************************************
 
+#ifdef MCHEAP_TRACK_STATS
 	//the minimum free space which has occurred since initialize() (requires MCHEAP_TRACK_STATS)
-	size_t		heap_head_room=0;	
+	size_t		heap_head_room = MCHEAP_SIZE - sizeof(struct used_struct);
 
-	//the current largest free section (requires MCHEAP_TRACK_STATS)
-	size_t 		heap_largest_free=0;
+	//the current largest allocation possible (requires MCHEAP_TRACK_STATS)
+	size_t 		heap_largest_free = MCHEAP_SIZE - sizeof(struct used_struct);
+#endif
 
 	//the current number of allocations
 	uint32_t	heap_allocations=0;
@@ -179,11 +191,16 @@
 
 	static bool					initialized = false;
 
-	static struct free_struct* 	first_free = (void*)heap_space;	//head of the free list
+	static struct free_struct* 	first_free;
 
 	#ifdef MCHEAP_ID_SECTIONS
 		static const char*		heap_id_file;
 		static uint16_t			heap_id_line;
+	#endif
+
+	#ifdef MCHEAP_USE_POSIX_MUTEX_LOCK
+		#include <pthread.h>
+		pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 	#endif
 
 //********************************************************************************************************
@@ -260,7 +277,7 @@
 // 	Heap test, may be used before freeing memory, to see if the heap is intact,
 // 	and also that the section about to be freed is actually a used section
 #ifdef MCHEAP_TEST
-	static void heap_test(struct used_struct *used_ptr);
+	static bool heap_test(struct used_struct *used_ptr);
 #endif
 
 
@@ -271,11 +288,92 @@
 #ifdef MCHEAP_RUNTIME_ADDRESS
 void heap_init(void* addr)
 {
+	APPIF_ENTER();
 	if(!heap_space)
 	{
 		heap_space = addr;
 		initialize();
 	};
+	APPIF_EXIT();
+}
+#endif
+
+#ifdef MCHEAP_PROVIDE_STDLIB_FUNCTIONS
+void* malloc(size_t size)
+{
+	void* retval;
+	APPIF_ENTER();
+	#ifdef MCHEAP_ID_SECTIONS
+		heap_id_file = SLMEM("malloc");
+		heap_id_line = 0;
+	#endif
+
+	#ifdef MCHEAP_TRACK_STATS
+	if(size >= heap_largest_free)	//mimic malloc's null return if heap_largest_free is tracked
+		retval = NULL;
+	else
+	#endif
+		retval = allocate(size);
+
+	APPIF_EXIT();
+	return retval;
+}
+
+void* calloc(size_t n, size_t size)
+{
+	void* retval;
+
+	APPIF_ENTER();
+	#ifdef MCHEAP_ID_SECTIONS
+		heap_id_file = SLMEM("calloc");
+		heap_id_line = 0;
+	#endif
+	size *= n;
+
+	#ifdef MCHEAP_TRACK_STATS
+	if(size >= heap_largest_free)	//mimic malloc's null return if heap_largest_free is tracked
+		retval = NULL;
+	else
+	#endif
+		retval = allocate(size);
+
+	if(retval)
+		memset(retval, 0, size);
+
+	APPIF_EXIT();
+	return retval;
+}
+
+void *realloc(void *ptr, size_t size)
+{
+	void* retval;
+
+	APPIF_ENTER();
+	#ifdef MCHEAP_ID_SECTIONS
+		heap_id_file = SLMEM("realloc");
+		heap_id_line = 0;
+	#endif
+
+	#ifdef MCHEAP_TRACK_STATS
+	if(size >= heap_largest_free)	//offer a null return if realloc *may* not be possible
+		retval = NULL;
+	else
+	#endif
+		retval = reallocate(ptr, size);
+
+	APPIF_EXIT();
+	return retval;
+}
+
+void free(void* ptr)
+{
+	APPIF_ENTER();
+	#ifdef MCHEAP_ID_SECTIONS
+		heap_id_file = SLMEM("free");
+		heap_id_line = 0;
+	#endif
+	internal_free(ptr);
+	APPIF_EXIT();
 }
 #endif
 
@@ -286,12 +384,17 @@ void* heap_allocate_id(size_t size, const char* id_file, uint16_t id_line)
 void* heap_allocate(size_t size)
 #endif
 {
+	void* retval;
+	APPIF_ENTER();
 	#ifdef MCHEAP_ID_SECTIONS
 		heap_id_file = id_file;
 		heap_id_line = id_line;
 	#endif
 
-	return allocate(size);
+	retval = allocate(size);
+
+	APPIF_EXIT();
+	return retval;
 }
 
 #ifdef MCHEAP_ID_SECTIONS
@@ -300,12 +403,17 @@ void* heap_reallocate_id(void* section, size_t new_size, const char* id_file, ui
 void* heap_reallocate(void* section, size_t new_size)
 #endif
 {
+	void* retval;
+	APPIF_ENTER();
 	#ifdef MCHEAP_ID_SECTIONS
 		heap_id_file = id_file;
 		heap_id_line = id_line;
 	#endif
 
-	return reallocate(section, new_size);
+	retval = reallocate(section, new_size);
+	APPIF_EXIT();
+
+	return retval;
 }
 
 
@@ -315,12 +423,16 @@ void* heap_free_id(void* section, const char* id_file, uint16_t id_line)
 void* heap_free(void* section)
 #endif
 {
+	APPIF_ENTER();
 	#ifdef MCHEAP_ID_SECTIONS
 		heap_id_file = id_file;
 		heap_id_line = id_line;
 	#endif
 
-	return internal_free(section);
+	internal_free(section);
+	APPIF_EXIT();
+
+	return NULL;
 }
 
 //return true if pointer is within the heap
@@ -328,8 +440,12 @@ bool heap_contains(void* section)
 {
 	bool retval;
 	
-	retval = ( (heap_space < (uint8_t*)section) && ((uint8_t*)section < &heap_space[MCHEAP_SIZE]) );
+	APPIF_ENTER();
+	if(!initialized)
+		initialize();
 
+	retval = ( (heap_space < (uint8_t*)section) && ((uint8_t*)section < &heap_space[MCHEAP_SIZE]) );
+	APPIF_EXIT();
 	return retval;
 }
 
@@ -339,9 +455,13 @@ struct heap_list_struct heap_list(unsigned int n)
 	struct heap_list_struct retval = {.file_id = NULL, .line_id = 0, .size = 0, .content = NULL,};
 	struct search_point_struct search_base;
 
+	APPIF_ENTER();
+	if(!initialized)
+		initialize();
+
 	search_base.section_ptr = heap_space;
 	search_base.next_free_ptr = first_free;
-	if(heap_space == first_free)
+	if(heap_space == (uint8_t*)first_free)
 		search_base = find_next_used(search_base);
 
 	while(n-- && search_base.section_ptr != END_OF_HEAP)
@@ -354,6 +474,7 @@ struct heap_list_struct heap_list(unsigned int n)
 		retval.size 	= USEDCAST(search_base.section_ptr)->size;
 		retval.content 	= USEDCAST(search_base.section_ptr)->content;
 	};
+	APPIF_EXIT();
 	return retval;
 }
 
@@ -367,6 +488,10 @@ struct heap_leakid_struct heap_find_leak(void)
 	uint16_t lid;
 	uint32_t cnt;
 	bool found_next_id = true;
+
+	APPIF_ENTER();
+	if(!initialized)
+		initialize();
 
 	search_base.section_ptr = heap_space;
 	search_base.next_free_ptr = first_free;
@@ -405,6 +530,7 @@ struct heap_leakid_struct heap_find_leak(void)
 		};
 	};
 
+	APPIF_EXIT();
 	return record;
 }
 #endif
@@ -464,6 +590,7 @@ char* heap_vprnf(const char* fmt, va_list va)
 {
 	struct dynbuf_struct dynbuf;
 
+	APPIF_ENTER();
 	#ifdef MCHEAP_ID_SECTIONS
 		heap_id_file = id_file;
 		heap_id_line = id_line;
@@ -477,6 +604,7 @@ char* heap_vprnf(const char* fmt, va_list va)
 	append_char(&dynbuf, 0);	//terminate
 	dynbuf.buf = reallocate(dynbuf.buf, dynbuf.pos+1);
 
+	APPIF_EXIT();
 	return dynbuf.buf;
 };
 
@@ -500,7 +628,6 @@ char* heap_prnf_P(PGM_P fmt, ...)
 	va_end(va);
 	return retval;
 };
-#endif
 
 #ifdef MCHEAP_ID_SECTIONS
 char* heap_vprnf_P_id(const char* id_file, uint16_t id_line, PGM_P fmt, va_list va)
@@ -510,6 +637,7 @@ char* heap_vprnf_P(PGM_P fmt, va_list va)
 {
 	struct dynbuf_struct dynbuf;
 
+	APPIF_ENTER();
 	#ifdef MCHEAP_ID_SECTIONS
 		heap_id_file = id_file;
 		heap_id_line = id_line;
@@ -522,11 +650,12 @@ char* heap_vprnf_P(PGM_P fmt, va_list va)
 	vfptrprnf_P(append_char, &dynbuf, fmt, va);
 	append_char(&dynbuf, 0);	//terminate
 	dynbuf.buf = reallocate(dynbuf.buf, dynbuf.pos+1);
-
+	APPIF_EXIT();
 	return dynbuf.buf;
 }
-
 #endif
+
+#endif	//PLATFORM_AVR
 
 //********************************************************************************************************
 // Private functions
@@ -540,18 +669,15 @@ static void initialize(void)
 	#endif
 
 	initialized=true;
-	static struct free_struct* free_ptr = (void*)heap_space;
+	first_free = (void*)heap_space;		//init head of the free list
 
 //	initialize free space
-	free_ptr->size 	= MCHEAP_SIZE - sizeof(struct free_struct);
+	first_free->size 	= MCHEAP_SIZE - sizeof(struct free_struct);
 	#ifdef MCHEAP_USE_KEYS
-		free_ptr->key 	= free_ptr->size ^ KEY_FREE;
+		first_free->key 	= first_free->size ^ KEY_FREE;
 	#endif
 
-	free_ptr->next_ptr 	= NULL;
-
-	heap_head_room		= free_ptr->size;
-	heap_largest_free	= free_ptr->size;
+	first_free->next_ptr 	= NULL;
 }
 
 static void* allocate(size_t size)
@@ -575,7 +701,7 @@ static void* allocate(size_t size)
 	#ifdef MCHEAP_TEST
 		heap_test(NULL);
 	#endif
-
+	
 	free_ptr = free_walk(size);
 	if(free_ptr)
 	{
@@ -618,6 +744,10 @@ static void* reallocate(void* section, size_t new_size)
 	if(section == NULL)
 	{
 		retval = allocate(new_size);					//if section == NULL just call allocate()
+	}
+	else if(new_size == 0)
+	{
+		retval = internal_free(section);
 	}
 	else
 	{
@@ -1077,21 +1207,22 @@ static void free_find_largest(void)
 	struct free_struct *free_ptr;
 	size_t largest=0;
 
-	free_ptr = first_free;
-
-	while(free_ptr)
+	heap_largest_free = 0;
+	if(first_free)
 	{
-		if(free_ptr->size > largest)
-			largest = free_ptr->size;
-		free_ptr = free_ptr->next_ptr;
-	};
+		free_ptr = first_free;
+		while(free_ptr)
+		{
+			if(free_ptr->size > largest)
+				largest = free_ptr->size;
+			free_ptr = free_ptr->next_ptr;
+		};
 
-//	convert to allocatable content size
-	largest += sizeof(struct free_struct);
-	if(largest >= sizeof(struct used_struct))
-		heap_largest_free = largest - sizeof(struct used_struct);
-	else
-		heap_largest_free = 0;
+	//	convert to allocatable content size
+		largest += sizeof(struct free_struct);
+		if(largest >= sizeof(struct used_struct))
+			heap_largest_free = largest - sizeof(struct used_struct);
+	};
 
 	if(heap_largest_free < heap_head_room)
 		heap_head_room = heap_largest_free;
@@ -1103,7 +1234,7 @@ static void free_find_largest(void)
 // and also that the section about to be freed is actually a used section
 //
 #ifdef MCHEAP_TEST
-	static void heap_test(struct used_struct *used_ptr)	
+	static bool heap_test(struct used_struct *used_ptr)	
 	#ifdef MCHEAP_USE_KEYS
 {
 	struct free_struct *next_free_ptr;

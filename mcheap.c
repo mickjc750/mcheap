@@ -74,7 +74,7 @@
 				#define ERROR_NO_INIT()				ASSERT_MSG_SL(false, "heap-no-init")
 			#endif
 		#else
-			#include "assert.h"
+			#include <assert.h>
 			#define ERROR_ALLOCATION_FAIL()		assert(!"heap-fail-alloc")
 			#define ERROR_REALLOC_FAIL()		assert(!"heap-fail-realloc")
 			#define ERROR_FREE_EXTERNAL()		assert(!"heap-free-external")
@@ -738,9 +738,6 @@ static void* reallocate(void* section, size_t new_size)
 	if(!initialized)
 		initialize();
 
-	if(!heap_contains(section))
-		ERROR_REALLOC_EXTERNAL();
-
 	if(section == NULL)
 	{
 		retval = allocate(new_size);					//if section == NULL just call allocate()
@@ -751,6 +748,9 @@ static void* reallocate(void* section, size_t new_size)
 	}
 	else
 	{
+		if(!heap_contains(section))
+			ERROR_REALLOC_EXTERNAL();
+
 		// align size
 		if(new_size & (MCHEAP_ALIGNMENT-1))
 			new_size += MCHEAP_ALIGNMENT;

@@ -111,7 +111,7 @@ MCHEAP_USE_POSIX_MUTEX_LOCK
 
 	struct heap_leakid_struct heap_find_leak(void)
 
-		Returns a structure containing file, line, and count, of the call which currently has the largest number of allocations in the heap.
+		Returns a structure containing source location and count, of the call which currently has the largest number of allocations in the heap.
 		This requires MCHEAP_ID_SECTIONS.
 
 
@@ -185,6 +185,7 @@ Error handling:
 	#include <stdbool.h>
 	#include <stddef.h>
 	#include <stdarg.h>
+	#include "srcloc.h"
 
 	#ifdef PLATFORM_AVR
 		#include <avr/pgmspace.h>
@@ -195,9 +196,9 @@ Error handling:
 //********************************************************************************************************
 
 	#ifdef MCHEAP_ID_SECTIONS
-		#define		heap_allocate(arg1)			heap_allocate_id((arg1), __FILE__, __LINE__)
-		#define		heap_reallocate(arg1, arg2)	heap_reallocate_id((arg1), (arg2), __FILE__, __LINE__)
-		#define		heap_free(arg1)				heap_free_id((arg1), __FILE__, __LINE__)
+		#define		heap_allocate(arg1)			heap_allocate_id((arg1), SRCLOC)
+		#define		heap_reallocate(arg1, arg2)	heap_reallocate_id((arg1), (arg2), SRCLOC)
+		#define		heap_free(arg1)				heap_free_id((arg1), SRCLOC)
 	#endif
 
 	#ifdef MCHEAP_PROVIDE_PRNF
@@ -207,12 +208,12 @@ Error handling:
 		#endif
 
 		#ifdef MCHEAP_ID_SECTIONS
-			#define heap_prnf(_fmtarg, ...) 	heap_prnf_id(__FILE__, __LINE__, _fmtarg ,##__VA_ARGS__)
+			#define heap_prnf(_fmtarg, ...) 	heap_prnf_id(SRCLOC, _fmtarg ,##__VA_ARGS__)
 			#ifdef PLATFORM_AVR
-				#define heap_prnf_P(_fmtarg, ...) 	heap_prnf_P_id(PSTR(__FILE__), __LINE__, _fmtarg ,##__VA_ARGS__)
-				#define heap_prnf_SL(_fmtarg, ...) 	({char* _prv; _prv = heap_prnf_P_id(PSTR(__FILE__), __LINE__, PSTR(_fmtarg) ,##__VA_ARGS__); while(0) heap_fmttst(_fmtarg ,##__VA_ARGS__); _prv;})
+				#define heap_prnf_P(_fmtarg, ...) 	heap_prnf_P_id(SRCLOC, _fmtarg ,##__VA_ARGS__)
+				#define heap_prnf_SL(_fmtarg, ...) 	({char* _prv; _prv = heap_prnf_P_id(SRCLOC, PSTR(_fmtarg) ,##__VA_ARGS__); while(0) heap_fmttst(_fmtarg ,##__VA_ARGS__); _prv;})
 			#else
-				#define heap_prnf_SL(_fmtarg, ...) 	heap_prnf_id(__FILE__, __LINE__, _fmtarg ,##__VA_ARGS__)
+				#define heap_prnf_SL(_fmtarg, ...) 	heap_prnf_id(SRCLOC, _fmtarg ,##__VA_ARGS__)
 			#endif
 		#else
 			#ifdef PLATFORM_AVR
@@ -226,15 +227,13 @@ Error handling:
 	#ifdef MCHEAP_ID_SECTIONS
 	struct heap_leakid_struct
 	{
-		const char* file_id;
-		uint16_t	line_id;
+		srcloc_t 	srcloc;
 		uint32_t	cnt;
 	};
 
 	struct heap_list_struct
 	{
-		const char* file_id;
-		uint16_t	line_id;
+		srcloc_t 	srcloc;
 		size_t		size;
 		void*		content;
 	};
@@ -274,9 +273,9 @@ Error handling:
 	#endif
 
 	#ifdef	MCHEAP_ID_SECTIONS
-		void*	heap_allocate_id(size_t size, const char* id_file, uint16_t id_line);
-		void*	heap_reallocate_id(void* org_section, size_t size, const char* id_file, uint16_t id_line);
-		void*	heap_free_id(void* address, const char* id_file, uint16_t id_line);
+		void*	heap_allocate_id(size_t size, srcloc_t srcloc);
+		void*	heap_reallocate_id(void* org_section, size_t size, srcloc_t srcloc);
+		void*	heap_free_id(void* address, srcloc_t srcloc);
 	#else
 		void*	heap_allocate(size_t size);
 		void*	heap_reallocate(void* org_section, size_t size);
@@ -286,11 +285,11 @@ Error handling:
 	#ifdef MCHEAP_PROVIDE_PRNF
 		#ifdef MCHEAP_ID_SECTIONS
 			#ifdef PLATFORM_AVR
-				char* heap_prnf_P_id(PGM_P id_file, uint16_t id_line, PGM_P fmt, ...);
-				char* heap_vprnf_P_id(PGM_P id_file, uint16_t id_line, PGM_P fmt, va_list va);
+				char* heap_prnf_P_id(srcloc_t srcloc, PGM_P fmt, ...);
+				char* heap_vprnf_P_id(srcloc_t srcloc, PGM_P fmt, va_list va);
 			#endif
-			char* heap_prnf_id(const char* id_file, uint16_t id_line, const char* fmt, ...) __attribute__((format(printf, 3, 4)));
-			char* heap_vprnf_id(const char* id_file, uint16_t id_line, const char* fmt, va_list va);
+			char* heap_prnf_id(srcloc_t srcloc, const char* fmt, ...) __attribute__((format(printf, 2, 3)));
+			char* heap_vprnf_id(srcloc_t srcloc, const char* fmt, va_list va);
 		#else
 			#ifdef PLATFORM_AVR
 				char* heap_prnf_P(PGM_P fmt, ...);

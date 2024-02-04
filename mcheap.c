@@ -31,6 +31,7 @@
 	#endif
 
 	#ifdef MCHEAP_USE_POSIX_MUTEX_LOCK
+		#include <pthread.h>
 		#define APPIF_ENTER()	pthread_mutex_lock(&mutex);
 		#define APPIF_EXIT()	pthread_mutex_unlock(&mutex);
 	#else
@@ -55,14 +56,14 @@
 		#ifdef USE_MCASSERT
 			#include "mcassert.h"
 			#ifdef MCHEAP_ID_SECTIONS
-				#define ERROR_ALLOCATION_FAIL()		assert_handle(heap_id_file, heap_id_line, SLMEM("heap-fail-alloc"))
-				#define ERROR_REALLOC_FAIL()		assert_handle(heap_id_file, heap_id_line, SLMEM("heap-fail-realloc"))
-				#define ERROR_FREE_EXTERNAL()		assert_handle(heap_id_file, heap_id_line, SLMEM("heap-free-external"))
-				#define ERROR_REALLOC_EXTERNAL()	assert_handle(heap_id_file, heap_id_line, SLMEM("heap-realloc-external"))
-				#define ERROR_FALSE_FREE()			assert_handle(heap_id_file, heap_id_line, SLMEM("heap-false-free"))
-				#define ERROR_FALSE_REALLOC()		assert_handle(heap_id_file, heap_id_line, SLMEM("heap-false-realloc"))
-				#define ERROR_BROKEN()				assert_handle(heap_id_file, heap_id_line, SLMEM("heap-broken"))
-				#define ERROR_NO_INIT()				assert_handle(heap_id_file, heap_id_line, SLMEM("heap-no-init"))
+				#define ERROR_ALLOCATION_FAIL()		assert_handle(heap_id_srcloc, SLMEM("heap-fail-alloc"))
+				#define ERROR_REALLOC_FAIL()		assert_handle(heap_id_srcloc, SLMEM("heap-fail-realloc"))
+				#define ERROR_FREE_EXTERNAL()		assert_handle(heap_id_srcloc, SLMEM("heap-free-external"))
+				#define ERROR_REALLOC_EXTERNAL()	assert_handle(heap_id_srcloc, SLMEM("heap-realloc-external"))
+				#define ERROR_FALSE_FREE()			assert_handle(heap_id_srcloc, SLMEM("heap-false-free"))
+				#define ERROR_FALSE_REALLOC()		assert_handle(heap_id_srcloc, SLMEM("heap-false-realloc"))
+				#define ERROR_BROKEN()				assert_handle(heap_id_srcloc, SLMEM("heap-broken"))
+				#define ERROR_NO_INIT()				assert_handle(heap_id_srcloc, SLMEM("heap-no-init"))
 			#else
 				#define ERROR_ALLOCATION_FAIL()		ASSERT_MSG_SL(false, "heap-fail-alloc")
 				#define ERROR_REALLOC_FAIL()		ASSERT_MSG_SL(false, "heap-fail-realloc")
@@ -106,8 +107,7 @@
 	#endif
 		size_t				size;		// size of empty content[] following this structure &content[size] will address the next used_struct/free_struct
 	#ifdef MCHEAP_ID_SECTIONS
-		const char*			id_file;	// file that freed this allocation
-		uint16_t			id_line;	// line number of file that freed this allocation
+		srcloc_t 			id_srcloc;	// source location that freed this allocation
 	#endif
 		struct free_struct*	next_ptr;	// next free
 		//(insert extras here if desired)
@@ -122,8 +122,7 @@
 	#endif
 		size_t		size;				// size of content[] following this structure &content[size] will address the next used_struct/free_struct
 	#ifdef MCHEAP_ID_SECTIONS
-		const char*	id_file;			// file that made this allocation
-		uint16_t	id_line;			// line number of file that made this allocation
+		srcloc_t 	id_srcloc;			// source location that made this allocation
 	#endif
 		//(insert extras here if desired)
 		// addresses memory after the structure & aligns the size of the structure
@@ -194,8 +193,7 @@
 	static struct free_struct* 	first_free;
 
 	#ifdef MCHEAP_ID_SECTIONS
-		static const char*		heap_id_file;
-		static uint16_t			heap_id_line;
+		static srcloc_t 		heap_id_srcloc;
 	#endif
 
 	#ifdef MCHEAP_USE_POSIX_MUTEX_LOCK
@@ -304,8 +302,7 @@ void* malloc(size_t size)
 	void* retval;
 	APPIF_ENTER();
 	#ifdef MCHEAP_ID_SECTIONS
-		heap_id_file = SLMEM("malloc");
-		heap_id_line = 0;
+		heap_id_srcloc = SRCLOC;
 	#endif
 
 	#ifdef MCHEAP_TRACK_STATS
@@ -325,8 +322,7 @@ void* calloc(size_t n, size_t size)
 
 	APPIF_ENTER();
 	#ifdef MCHEAP_ID_SECTIONS
-		heap_id_file = SLMEM("calloc");
-		heap_id_line = 0;
+		heap_id_srcloc = SRCLOC;
 	#endif
 	size *= n;
 
@@ -350,8 +346,7 @@ void *realloc(void *ptr, size_t size)
 
 	APPIF_ENTER();
 	#ifdef MCHEAP_ID_SECTIONS
-		heap_id_file = SLMEM("realloc");
-		heap_id_line = 0;
+		heap_id_srcloc = SRCLOC;
 	#endif
 
 	#ifdef MCHEAP_TRACK_STATS
@@ -369,8 +364,7 @@ void free(void* ptr)
 {
 	APPIF_ENTER();
 	#ifdef MCHEAP_ID_SECTIONS
-		heap_id_file = SLMEM("free");
-		heap_id_line = 0;
+		heap_id_srcloc = SRCLOC;
 	#endif
 	internal_free(ptr);
 	APPIF_EXIT();
@@ -379,7 +373,7 @@ void free(void* ptr)
 
 
 #ifdef MCHEAP_ID_SECTIONS
-void* heap_allocate_id(size_t size, const char* id_file, uint16_t id_line)
+void* heap_allocate_id(size_t size, srcloc_t srcloc)
 #else
 void* heap_allocate(size_t size)
 #endif
@@ -387,8 +381,7 @@ void* heap_allocate(size_t size)
 	void* retval;
 	APPIF_ENTER();
 	#ifdef MCHEAP_ID_SECTIONS
-		heap_id_file = id_file;
-		heap_id_line = id_line;
+		heap_id_srcloc = srcloc;
 	#endif
 
 	retval = allocate(size);
@@ -398,7 +391,7 @@ void* heap_allocate(size_t size)
 }
 
 #ifdef MCHEAP_ID_SECTIONS
-void* heap_reallocate_id(void* section, size_t new_size, const char* id_file, uint16_t id_line)
+void* heap_reallocate_id(void* section, size_t new_size, srcloc_t srcloc)
 #else
 void* heap_reallocate(void* section, size_t new_size)
 #endif
@@ -406,8 +399,7 @@ void* heap_reallocate(void* section, size_t new_size)
 	void* retval;
 	APPIF_ENTER();
 	#ifdef MCHEAP_ID_SECTIONS
-		heap_id_file = id_file;
-		heap_id_line = id_line;
+		heap_id_srcloc = srcloc;
 	#endif
 
 	retval = reallocate(section, new_size);
@@ -418,15 +410,14 @@ void* heap_reallocate(void* section, size_t new_size)
 
 
 #ifdef MCHEAP_ID_SECTIONS
-void* heap_free_id(void* section, const char* id_file, uint16_t id_line)
+void* heap_free_id(void* section, srcloc_t srcloc)
 #else
 void* heap_free(void* section)
 #endif
 {
 	APPIF_ENTER();
 	#ifdef MCHEAP_ID_SECTIONS
-		heap_id_file = id_file;
-		heap_id_line = id_line;
+		heap_id_srcloc = srcloc;
 	#endif
 
 	internal_free(section);
@@ -452,7 +443,7 @@ bool heap_contains(void* section)
 #ifdef MCHEAP_ID_SECTIONS
 struct heap_list_struct heap_list(unsigned int n)
 {
-	struct heap_list_struct retval = {.file_id = NULL, .line_id = 0, .size = 0, .content = NULL,};
+	struct heap_list_struct retval = {0};
 	struct search_point_struct search_base;
 
 	APPIF_ENTER();
@@ -469,8 +460,7 @@ struct heap_list_struct heap_list(unsigned int n)
 
 	if(search_base.section_ptr != END_OF_HEAP)
 	{
-		retval.file_id 	= USEDCAST(search_base.section_ptr)->id_file;
-		retval.line_id 	= USEDCAST(search_base.section_ptr)->id_line;
+		retval.srcloc 	= USEDCAST(search_base.section_ptr)->id_srcloc;
 		retval.size 	= USEDCAST(search_base.section_ptr)->size;
 		retval.content 	= USEDCAST(search_base.section_ptr)->content;
 	};
@@ -480,12 +470,11 @@ struct heap_list_struct heap_list(unsigned int n)
 
 struct heap_leakid_struct heap_find_leak(void)
 {
-	struct heap_leakid_struct record = {.file_id = "", .line_id = 0, .cnt = 0};
+	struct heap_leakid_struct record = {0};
 	struct search_point_struct search_base;
 	struct search_point_struct search_id;
 
-	const char* fid;
-	uint16_t lid;
+	srcloc_t srcloc;
 	uint32_t cnt;
 	bool found_next_id = true;
 
@@ -501,18 +490,14 @@ struct heap_leakid_struct heap_find_leak(void)
 
 	while(search_base.section_ptr != END_OF_HEAP && found_next_id)
 	{
-		fid = USEDCAST(search_base.section_ptr)->id_file;
-		lid = USEDCAST(search_base.section_ptr)->id_line;
+		srcloc = USEDCAST(search_base.section_ptr)->id_srcloc;
 		search_id = search_base;
 		found_next_id = false;
 		cnt = 0;
 		while(search_id.section_ptr != END_OF_HEAP)
 		{
-			if( (fid == USEDCAST(search_id.section_ptr)->id_file)
-			&&  (lid == USEDCAST(search_id.section_ptr)->id_line) )
-			{
+			if(srcloc_is_eq(srcloc, USEDCAST(search_id.section_ptr)->id_srcloc))
 				cnt++;
-			}
 			else if(!found_next_id)
 			{
 				search_base = search_id;
@@ -525,8 +510,7 @@ struct heap_leakid_struct heap_find_leak(void)
 		if(cnt > record.cnt)
 		{
 			record.cnt = cnt;
-			record.file_id = fid;
-			record.line_id = lid;
+			record.srcloc = srcloc;
 		};
 	};
 
@@ -563,7 +547,7 @@ static void append_char(void* buf, char x)
 }
 
 #ifdef MCHEAP_ID_SECTIONS
-char* heap_prnf_id(const char* id_file, uint16_t id_line, const char* fmt, ...)
+char* heap_prnf_id(srcloc_t srcloc, const char* fmt, ...)
 #else
 char* heap_prnf(const char* fmt, ...)
 #endif
@@ -573,7 +557,7 @@ char* heap_prnf(const char* fmt, ...)
 	va_start(va, fmt);
 
 	#ifdef MCHEAP_ID_SECTIONS
-	retval = heap_vprnf_id(id_file, id_line, fmt, va);
+	retval = heap_vprnf_id(srcloc, fmt, va);
 	#else
 	retval = heap_vprnf(fmt, va);
 	#endif
@@ -583,7 +567,7 @@ char* heap_prnf(const char* fmt, ...)
 }
 
 #ifdef MCHEAP_ID_SECTIONS
-char* heap_vprnf_id(const char* id_file, uint16_t id_line, const char* fmt, va_list va)
+char* heap_vprnf_id(srcloc_t srcloc, const char* fmt, va_list va)
 #else
 char* heap_vprnf(const char* fmt, va_list va)
 #endif
@@ -592,8 +576,7 @@ char* heap_vprnf(const char* fmt, va_list va)
 
 	APPIF_ENTER();
 	#ifdef MCHEAP_ID_SECTIONS
-		heap_id_file = id_file;
-		heap_id_line = id_line;
+		heap_id_srcloc = srcloc;
 	#endif
 
 	dynbuf.size = strlen(fmt)+MCHEAP_PRNF_GROW_STEP;
@@ -610,7 +593,7 @@ char* heap_vprnf(const char* fmt, va_list va)
 
 #ifdef PLATFORM_AVR
 #ifdef MCHEAP_ID_SECTIONS
-char* heap_prnf_P_id(const char* id_file, uint16_t id_line, PGM_P fmt, ...)
+char* heap_prnf_P_id(srcloc_t srcloc, PGM_P fmt, ...)
 #else
 char* heap_prnf_P(PGM_P fmt, ...)
 #endif
@@ -620,7 +603,7 @@ char* heap_prnf_P(PGM_P fmt, ...)
 	va_start(va, fmt);
 
 	#ifdef MCHEAP_ID_SECTIONS
-	retval = heap_vprnf_P_id(id_file, id_line, fmt, va);
+	retval = heap_vprnf_P_id(srcloc, fmt, va);
 	#else
 	retval = heap_vprnf_P(fmt, va);
 	#endif
@@ -630,7 +613,7 @@ char* heap_prnf_P(PGM_P fmt, ...)
 };
 
 #ifdef MCHEAP_ID_SECTIONS
-char* heap_vprnf_P_id(const char* id_file, uint16_t id_line, PGM_P fmt, va_list va)
+char* heap_vprnf_P_id(srcloc_t srcloc, PGM_P fmt, va_list va)
 #else
 char* heap_vprnf_P(PGM_P fmt, va_list va)
 #endif
@@ -639,8 +622,7 @@ char* heap_vprnf_P(PGM_P fmt, va_list va)
 
 	APPIF_ENTER();
 	#ifdef MCHEAP_ID_SECTIONS
-		heap_id_file = id_file;
-		heap_id_line = id_line;
+		heap_id_srcloc = srcloc;
 	#endif
 
 	dynbuf.size = strlen_P(fmt)+MCHEAP_PRNF_GROW_STEP;
@@ -914,8 +896,7 @@ static void used_shrink(struct used_struct *used_ptr, size_t new_size)
 				free_ptr->key = free_ptr->size ^ KEY_FREE;
 			#endif
 			#ifdef MCHEAP_ID_SECTIONS
-				free_ptr->id_file = __FILE__;	//(internal ID)
-				free_ptr->id_line = __LINE__;
+				free_ptr->id_srcloc = SRCLOC;
 			#endif
 
 			//shrink used section
@@ -950,8 +931,7 @@ static struct free_struct* used_to_free(struct used_struct *used_ptr)
 		free_ptr->key = KEY_FREE ^ free_ptr->size;
 	#endif
 	#ifdef MCHEAP_ID_SECTIONS
-		free_ptr->id_file = heap_id_file;
-		free_ptr->id_line = heap_id_line;
+		free_ptr->id_srcloc = heap_id_srcloc;
 	#endif
 
 	return free_ptr;
@@ -972,8 +952,7 @@ static struct used_struct* free_to_used(struct free_struct *free_ptr)
 		used_ptr->key = KEY_USED ^ used_ptr->size;
 	#endif
 	#ifdef MCHEAP_ID_SECTIONS
-		used_ptr->id_file = heap_id_file;
-		used_ptr->id_line = heap_id_line;
+		used_ptr->id_srcloc = heap_id_srcloc;
 	#endif
 	return used_ptr;
 }

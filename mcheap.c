@@ -1,8 +1,10 @@
 /*
 */
 	#include <string.h>
-	#include "mcheap.h"
-
+	#include <stdint.h>
+	#include <stdbool.h>
+	#include <stddef.h>
+	
 //********************************************************************************************************
 // Local defines
 //********************************************************************************************************
@@ -164,38 +166,27 @@
 // Public functions
 //********************************************************************************************************
 
-void* heap_allocate(size_t size)
+void* mcheap_allocate(size_t size)
 {
-	void* retval = NULL;
-
-	retval = allocate(size);
-
-	return retval;
+	return allocate(size);
 }
 
-void* heap_reallocate(void* section, size_t new_size)
+void* mcheap_reallocate(void* section, size_t new_size)
 {
-	void* retval = NULL;
-
-	retval = reallocate(section, new_size);
-
-	return retval;
+	return reallocate(section, new_size);
 }
 
-void* heap_free(void* section)
+void* mcheap_free(void* section)
 {
-
-	internal_free(section);
-
-	return NULL;
+	return internal_free(section);
 }
 
-size_t heap_largest_free(void)
+size_t mcheap_largest_free(void)
 {
 	return free_find_largest();
 }
 
-bool heap_is_intact(void)
+bool mcheap_is_intact(void)
 {
 	return heap_test();
 }

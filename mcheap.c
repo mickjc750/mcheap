@@ -53,6 +53,8 @@
 		((type *)(__mptr - offsetof(type, member)));	\
 	})
 
+	#define SMALLEST_OF(x,y) ((x)<(y) ? (x):(y))
+
 //********************************************************************************************************
 // Public variables
 //********************************************************************************************************
@@ -81,6 +83,13 @@
 	static void* allocate(size_t size);
 	static void* reallocate(void* section, size_t new_size);
 	static void* internal_free(void* section);
+
+// relocate of realloc
+// dest_ptr must be a suitable free section capable of allocating new_size bytes.
+// removes dest_ptr from the free list, moves src_ptr to dest_ptr, and adds src_ptr to the free list
+// preserves at most new_size bytes
+// returns the new used section at dest_ptr
+	static struct used_struct* relocate(struct free_struct* dest_ptr, struct used_struct* src_ptr, size_t new_size);
 
 // 	Return true if section is in the free list
 	static bool in_free_list(struct free_struct *x);
@@ -139,6 +148,17 @@
 // 	Heap test, return true if the heap is intact.
 	static bool heap_test(void);
 
+//	Round up size to a multiple of MCHEAP_ALIGNMENT
+	static size_t align_size(size_t sz);
+
+// Ensure that size is aligned, AND that the used section will be large enough to return to the free list
+	static size_t enforce_minimum_allocation_size(size_t sz);
+
+// 	Return true, if the used section can extend down into the free section to acheive the desired size
+	static bool used_section_can_extend_down(struct free_struct* free_ptr, struct used_struct* used_ptr, size_t desired_size);
+
+// Return true, if the used section can extend up into a free section to acheive the desired size
+	static bool used_section_can_extend_up(struct used_struct* used_ptr, size_t desired_size);
 
 //********************************************************************************************************
 // Public functions
@@ -201,14 +221,7 @@ static void* allocate(size_t size)
 	if(!initialized)
 		initialize();
 
-//	align size
-	if(size & (MCHEAP_ALIGNMENT-1))
-		size += MCHEAP_ALIGNMENT;
-	size &= ~(size_t)(MCHEAP_ALIGNMENT-1);
-
-//	allocation must be large enough to return to the free list
-	if(sizeof(struct used_struct) + size < sizeof(struct free_struct))
-		size = sizeof(struct free_struct) - sizeof(struct used_struct);
+	size = enforce_minimum_allocation_size(size);
 
 	free_ptr = free_walk(size);
 	if(free_ptr)
@@ -225,7 +238,7 @@ static void* allocate(size_t size)
 static void* reallocate(void* section, size_t new_size)
 {
 	struct free_struct* free_ptr;
-	struct free_struct* dest_ptr = NULL;
+	struct free_struct* relocation_ptr;
 	struct used_struct* used_ptr;
 	struct used_struct* new_used_ptr = NULL;
 	void* retval = NULL;
@@ -239,77 +252,36 @@ static void* reallocate(void* section, size_t new_size)
 		retval = internal_free(section);
 	else
 	{
-		// align size
-		if(new_size & (MCHEAP_ALIGNMENT-1))
-			new_size += MCHEAP_ALIGNMENT;
-		new_size &= ~(size_t)(MCHEAP_ALIGNMENT-1);
-
-		// allocation must be large enough to return to the free list
-		if(sizeof(struct used_struct) + new_size < sizeof(struct free_struct))
-			new_size = sizeof(struct free_struct) - sizeof(struct used_struct);
-
+		new_size = enforce_minimum_allocation_size(new_size);
 		used_ptr = container_of(section, struct used_struct, content);
 
 		// find space for new allocation
-		free_ptr = free_walk(new_size);
+		relocation_ptr = free_walk(new_size);
 
-		// space below?
-		if(free_ptr && (void*)free_ptr < (void*)used_ptr)
-			dest_ptr = free_ptr;	//destination below (optimal)
+		// relocate to a lower address? (1st preference to minimize fragmentation)
+		if(relocation_ptr && (void*)relocation_ptr < (void*)used_ptr)
+			new_used_ptr = relocate(relocation_ptr, used_ptr, new_size);
+
+		// shrink in place? (2nd preference)
+		else if(new_size <= used_ptr->size)
+			new_used_ptr = used_ptr;
+
+		// try extending
 		else
 		{
-			dest_ptr = free_ptr;	//destination above (or NULL)
-
-			//Can we extend down?
-			free_ptr = find_free_below(used_ptr);
-			if(free_ptr)
+			free_ptr = find_free_below(used_ptr); 
+			if(used_section_can_extend_down(free_ptr, used_ptr, new_size)) // 3rd preference
 			{
-				if(SECTION_AFTER(free_ptr) == used_ptr)
-				{
-					//Yes, can we extend down enough?
-					if(used_ptr->size + SECTION_SIZE(free_ptr) >= new_size)
-					{
-						free_remove(free_ptr);
-						new_used_ptr = used_extend_down(free_ptr, used_ptr, new_size);
-						dest_ptr = NULL;
-					};
-				};
-			};
-			
-			//Can we extend up?
-			if(!new_used_ptr && in_free_list(SECTION_AFTER(used_ptr)))
+				free_remove(free_ptr);
+				new_used_ptr = used_extend_down(free_ptr, used_ptr, new_size);
+			}
+			else if(used_section_can_extend_up(used_ptr, new_size))	//4th preference
 			{
-				//Yes, can we extend up enough?
-				free_ptr = SECTION_AFTER(used_ptr);
-				if(used_ptr->size + SECTION_SIZE(free_ptr) >= new_size)
-				{
-					free_remove(free_ptr);
-					new_used_ptr = used_extend_up(used_ptr);
-					dest_ptr = NULL;
-				};
-			};
-		};
-
-		//full relocation needed? (we were unable to extend)
-		if(dest_ptr)
-		{
-			//remove from free list
-			free_remove(dest_ptr);
-
-			//convert free section to used section
-			new_used_ptr = free_to_used(dest_ptr);
-
-			//copy content
-			if(new_size < used_ptr->size)
-				memcpy(new_used_ptr->content, used_ptr->content, new_size);
-			else
-				memcpy(new_used_ptr->content, used_ptr->content, used_ptr->size);
-
-			//free the original used section
-			free_ptr = used_to_free(used_ptr);
-
-			free_insert(free_ptr);	// insert it into the free list
-			free_merge(free_ptr);	// and merge with adjacent free sections
+				free_remove(SECTION_AFTER(used_ptr));
+				new_used_ptr = used_extend_up(used_ptr);
+			}
+			else if(relocation_ptr)
+				new_used_ptr = relocate(relocation_ptr, used_ptr, new_size);	// 5th preference, relocate to higher address
 		};
 
 		// Shrink the new used section if possible
@@ -320,6 +292,24 @@ static void* reallocate(void* section, size_t new_size)
 		};
 	};
 	return retval;
+}
+
+// relocate of realloc
+// dest_ptr must be a suitable free section capable of allocating new_size bytes.
+// removes dest_ptr from the free list, moves src_ptr to dest_ptr, and adds src_ptr to the free list
+// preserves at most new_size bytes
+// returns the new used section at dest_ptr, does not shrink the destination.
+static struct used_struct* relocate(struct free_struct* dest_ptr, struct used_struct* src_ptr, size_t new_size)
+{
+	struct used_struct* new_used_ptr;
+	struct free_struct* new_free_ptr;
+	free_remove(dest_ptr);
+	new_used_ptr = free_to_used(dest_ptr);
+	memcpy(new_used_ptr->content, src_ptr->content, SMALLEST_OF(new_size, src_ptr->size));
+	new_free_ptr = used_to_free(src_ptr);
+	free_insert(new_free_ptr);	// insert it into the free list
+	free_merge(new_free_ptr);	// and merge with adjacent free sections
+	return new_used_ptr;
 }
 
 static void* internal_free(void* section)
@@ -363,10 +353,7 @@ static void used_shrink(struct used_struct *used_ptr, size_t new_size)
 			//shrink used section
 			used_ptr->size = new_size;
 
-			//insert new free section into the free list
 			free_insert(free_ptr);
-
-			//merge with the following free section if possible
 			free_merge_up(free_ptr);
 		};
 	};
@@ -397,6 +384,22 @@ static struct used_struct* free_to_used(struct free_struct *free_ptr)
 	return used_ptr;
 }
 
+// Return true, if the used section can extend down into the free section to acheive the desired size
+static bool used_section_can_extend_down(struct free_struct* free_ptr, struct used_struct* used_ptr, size_t desired_size)
+{
+	return (free_ptr
+		&& (SECTION_AFTER(free_ptr) == used_ptr)
+		&& (used_ptr->size + SECTION_SIZE(free_ptr) >= desired_size));
+}
+
+// Return true, if the used section can extend up into a free section to acheive the desired size
+static bool used_section_can_extend_up(struct used_struct* used_ptr, size_t desired_size)
+{
+	struct free_struct* free_ptr = SECTION_AFTER(used_ptr);
+
+	return (in_free_list(free_ptr)
+		&& (used_ptr->size + SECTION_SIZE(free_ptr) >= desired_size) );
+}
 
 // Extend a used section into a lower free section, also moves content limited to 'preserve_size' bytes
 // Free section must be removed from the free list before calling this function
@@ -599,4 +602,22 @@ static bool heap_test(void)
 			intact = false;
 	};
 	return intact;
+}
+
+// Ensure that size is aligned, AND that the used section will be large enough to return to the free list
+static size_t enforce_minimum_allocation_size(size_t sz)
+{
+	sz = align_size(sz);
+
+	if(sizeof(struct used_struct) + sz < sizeof(struct free_struct))
+		sz = sizeof(struct free_struct) - sizeof(struct used_struct);
+
+	return sz;
+}
+
+static size_t align_size(size_t sz)
+{
+	if(sz % MCHEAP_ALIGNMENT)
+		sz += MCHEAP_ALIGNMENT - (sz % MCHEAP_ALIGNMENT);
+	return sz;
 }

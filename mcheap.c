@@ -16,10 +16,6 @@
 		#define MCHEAP_ALIGNMENT 	(sizeof(void*))
 	#endif
 
-	// meta data used for free and allocated sections
-	// these can be extended with extra info if desired
-	// the size & key members must be at the same offset in both
-	// the content member must have the same name (content) in both
 	struct free_struct
 	{
 		size_t				size;		// size of empty content[] following this structure &content[size] will address the next used_struct/free_struct
@@ -33,13 +29,6 @@
 		size_t		size;				// size of content[] following this structure &content[size] will address the next used_struct/free_struct
 		// addresses memory after the structure & aligns the size of the structure
 		uint8_t		content[0] __attribute__((aligned(MCHEAP_ALIGNMENT)));
-	};
-
-//	Info used for searching the heap, contains a section pointer (to either type), and the next known free section
-	struct search_point_struct
-	{
-		void* section_ptr;
-		struct free_struct *next_free_ptr;	//next free section after (or at) section_ptr, or NULL if none
 	};
 
 //	evaluate the total size of a used or free section (including it's meta data) pointed to by arg1
@@ -343,7 +332,6 @@ static void* internal_free(void* section)
 
 	if(section != NULL)
 	{
-		//in the heap
 		used_ptr = container_of(section, struct used_struct, content);
 			
 		free_ptr = used_to_free(used_ptr);	//convert to free section
@@ -544,7 +532,6 @@ static void free_merge(struct free_struct *free_ptr)
 }
 
 // Merge free section into the next free section if possible
-// merge does not destroy id_ info for either section, but overwrites second sections key with KEY_MERGED
 static void free_merge_up(struct free_struct *free_ptr)
 {
 	//if there is a free section after this one
@@ -598,7 +585,7 @@ static bool heap_test(void)
 	next_free_ptr = first_free;
 	section_ptr = heap_space;
 
-	while(intact && section_ptr != &heap_space[MCHEAP_SIZE])
+	while(intact && section_ptr != END_OF_HEAP)
 	{
 		if(section_ptr == (void*)next_free_ptr)
 		{
@@ -608,7 +595,7 @@ static bool heap_test(void)
 		else
 			section_ptr += SECTION_SIZE(USEDCAST(section_ptr));
 
-		if((uint8_t*)section_ptr < heap_space || (uint8_t*)section_ptr > &heap_space[MCHEAP_SIZE])
+		if((uint8_t*)section_ptr < heap_space || (uint8_t*)section_ptr > END_OF_HEAP)
 			intact = false;
 	};
 	return intact;

@@ -46,9 +46,9 @@ MCHEAP_ADDRESS
 	If ptr is NULL, attempt a new allocation.
 	If size is 0, free the allocation and return NULL.
 	Preferred reallocate methods from 1st to last are:
-		* relocate to a lower address (this minimizes fragmentation)
+		* relocate to a lower address
+		* extend down (or shift down if new size is smaller)
 		* shinrk in place
-		* extened down
 		* extend up
 		* relocate to a higher address.
 	If heap_reallocate() fails, it will return NULL.*/
@@ -63,4 +63,7 @@ MCHEAP_ADDRESS
 //	Return true if all the heap meta data is valid and intact.
 	bool	mcheap_is_intact(void);
 
+//	If the heap is broken, this can re-intialize it.
+//	This is used after test cases which break the heap on purpose.
+	void	mcheap_reinit(void);
 #endif

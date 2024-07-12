@@ -191,6 +191,11 @@ bool mcheap_is_intact(void)
 	return heap_test();
 }
 
+void mcheap_reinit(void)
+{
+	initialize();
+}
+
 //********************************************************************************************************
 // Private functions
 //********************************************************************************************************
@@ -253,19 +258,16 @@ static void* reallocate(void* section, size_t new_size)
 		if(relocation_ptr && (void*)relocation_ptr < (void*)used_ptr)
 			new_used_ptr = relocate(relocation_ptr, used_ptr, new_size);
 
-		// shrink in place? (2nd preference)
-		else if(new_size <= used_ptr->size)
-			new_used_ptr = used_ptr;
-
-		// try extending
 		else
 		{
 			free_ptr = find_free_below(used_ptr); 
-			if(used_section_can_extend_down(free_ptr, used_ptr, new_size)) // 3rd preference
+			if(used_section_can_extend_down(free_ptr, used_ptr, new_size)) // 2nd preference
 			{
 				free_remove(free_ptr);
 				new_used_ptr = used_extend_down(free_ptr, used_ptr, new_size);
 			}
+			else if(new_size <= used_ptr->size)	//shrink in place? 3rd prefereence
+				new_used_ptr = used_ptr;
 			else if(used_section_can_extend_up(used_ptr, new_size))	//4th preference
 			{
 				free_remove(SECTION_AFTER(used_ptr));
@@ -548,7 +550,6 @@ static size_t free_find_largest(void)
 {
 	struct free_struct *free_ptr;
 	size_t largest=0;
-	size_t heap_largest_free = 0;
 	if(first_free)
 	{
 		free_ptr = first_free;

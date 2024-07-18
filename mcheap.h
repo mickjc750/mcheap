@@ -48,7 +48,7 @@ MCHEAP_ADDRESS
 	Preferred reallocate methods from 1st to last are:
 		* relocate to a lower address
 		* extend down (or shift down if new size is smaller)
-		* shinrk in place
+		* shrink in place
 		* extend up
 		* relocate to a higher address.
 	If heap_reallocate() fails, it will return NULL.*/
@@ -57,7 +57,7 @@ MCHEAP_ADDRESS
 //	Free the allocation, always returns NULL
 	void*	mcheap_free(void* ptr);
 
-//	Return largest possible allcoation that can currently be made.
+//	Return largest possible allocation that can currently be made.
 	size_t  mcheap_largest_free(void);
 
 //	Return true if all the heap meta data is valid and intact.

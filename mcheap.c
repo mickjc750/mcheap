@@ -266,7 +266,7 @@ static void* reallocate(void* section, size_t new_size)
 				free_remove(free_ptr);
 				new_used_ptr = used_extend_down(free_ptr, used_ptr, new_size);
 			}
-			else if(new_size <= used_ptr->size)	//shrink in place? 3rd prefereence
+			else if(new_size <= used_ptr->size)	//shrink in place? 3rd preference
 				new_used_ptr = used_ptr;
 			else if(used_section_can_extend_up(used_ptr, new_size))	//4th preference
 			{
@@ -570,7 +570,6 @@ static size_t free_find_largest(void)
 }
 
 // Heap test, may be used before freeing memory, to see if the heap is intact,
-// and also that the section about to be freed is actually a used section
 static bool heap_test(void)	
 {
 	struct free_struct *next_free_ptr;

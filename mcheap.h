@@ -63,7 +63,7 @@ MCHEAP_ADDRESS
 //	Return true if all the heap meta data is valid and intact.
 	bool	mcheap_is_intact(void);
 
-//	If the heap is broken, this can re-intialize it.
+//	If the heap is broken, this can re-initialize it.
 //	This is used after test cases which break the heap on purpose.
 	void	mcheap_reinit(void);
 #endif

@@ -32,7 +32,7 @@ CSTANDARD = -std=gnu99
 
 # Place -D or -U options here for C sources
 CDEFS = -DPLATFORM_PC
-CDEFS += -DMCHEAP_SIZE=5000
+CDEFS += -DMCHEAP_SIZE=5008
 
 #---------------- Compiler Options C ----------------
 #  -g 			 debug information
@@ -53,7 +53,7 @@ CFLAGS += -Wextra
 #     Use forward slashes for directory separators.
 #     For a directory that has spaces, enclose it in quotes.
 EXTRALIBDIRS = .
-EXTRALIBS = -lm
+EXTRALIBS = 
 
 #---------------- Linker Options ----------------
 

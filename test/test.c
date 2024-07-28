@@ -7,6 +7,7 @@
 	#include <assert.h>
 	#include <limits.h>
 	#include <stdint.h>
+	#include <inttypes.h>
 	#include <math.h>
 	#include "../mcheap.h"
 	#include "crc32.h"
@@ -18,11 +19,14 @@
 //********************************************************************************************************
 
 	#define ALLOCATION_COUNT 8
-	#define RANDOM_OP_COUNT 100000
+	#define RANDOM_OP_COUNT 5000000
 
 //********************************************************************************************************
 // Local defines
 //********************************************************************************************************
+
+	#define ERR_REALLOC_BROKE_ON_INCREASE -1
+	#define ERR_REALLOC_BROKE_ON_DECREASE -2
 
 	#define DBG(_fmtarg, ...) printf("%s:%.4i - "_fmtarg"\n" , __FILE__, __LINE__ ,##__VA_ARGS__)
 
@@ -36,6 +40,12 @@
 //********************************************************************************************************
 // Private variables
 //********************************************************************************************************
+
+	uint32_t count_realloc_bigger = 0;
+	uint32_t count_realloc_smaller = 0;
+	uint32_t count_realloc_same = 0;
+	uint32_t count_allocate = 0;
+	uint32_t count_free = 0;
 
 //********************************************************************************************************
 // Private prototypes
@@ -54,6 +64,7 @@
 	TEST test_intact(void);
 	TEST test_random(void);
 
+	static int random_realloc(char **ptr_ptr, int *size_ptr, uint32_t *crc_ptr);
 	static void clutter(char* dst, size_t sz);
 	int choose_allocation_size(void);
 
@@ -195,7 +206,7 @@ TEST test_max_free(void)
 	ASSERT(b);
 	ASSERT(mcheap_largest_free() < 1000);	// top of heap should have just under 1000 due to overhead
 	mcheap_free(a);
-	ASSERT(mcheap_largest_free() == 1000);	// should now of 1000 where 'a' was
+	ASSERT(1000 <= mcheap_largest_free() &&  mcheap_largest_free() < 1016);	// should now of 1000 where 'a' was
 	mcheap_free(b);
 	ASSERT(mcheap_largest_free() > 2000);	// should now have just over 2000 due to overhead
 
@@ -212,8 +223,7 @@ TEST test_intact(void)
 	char *c = 	mcheap_allocate(20);
 				mcheap_allocate(100);
 	ASSERT(mcheap_is_intact());
-	c--;
-	c[0] = 0xFF;	// break a used section
+	memset(c-16,0xFF, 16);	//break it
 	ASSERT(!mcheap_is_intact());
 
 	mcheap_reinit();
@@ -222,7 +232,7 @@ TEST test_intact(void)
 			mcheap_allocate(100);
 	mcheap_free(c);
 	ASSERT(mcheap_is_intact());
-	c[-1] = 0xFF;	//break the free list
+	memset(c-16,0xFF, 16);	//break it
 	ASSERT(!mcheap_is_intact());
 
 	PASS();
@@ -234,15 +244,27 @@ TEST test_random(void)
 	uint32_t crcs[ALLOCATION_COUNT];
 	int sizes[ALLOCATION_COUNT];
 	int i;
+	int err;
 	uint32_t count = RANDOM_OP_COUNT;
 	mcheap_reinit();
+	printf("Testing random heap activity with %"PRIu32" operations\n", count);
 	while(count--)
 	{
 		// allocate or free
 		i = rand() % ALLOCATION_COUNT;
 		if(ptrs[i])
 		{
-			ptrs[i] = mcheap_free(ptrs[i]);
+			if(rand() % 2)
+			{
+				ptrs[i] = mcheap_free(ptrs[i]);
+				count_free++;
+			}
+			else
+			{
+				err = random_realloc(&ptrs[i], &sizes[i], &crcs[i]);
+				ASSERT_NEQ(ERR_REALLOC_BROKE_ON_DECREASE, err);
+				ASSERT_NEQ(ERR_REALLOC_BROKE_ON_INCREASE, err);
+			};
 		}
 		else
 		{
@@ -252,10 +274,11 @@ TEST test_random(void)
 				ptrs[i] = mcheap_allocate(sizes[i]);
 				clutter(ptrs[i], sizes[i]);
 				crcs[i] = crc32_add(0, ptrs[i], sizes[i]);
+				count_allocate++;
 			};
 		};
 
-		//check existing allocations are intact
+		//check all existing allocations are intact
 		i = 0;
 		while(i != ALLOCATION_COUNT)
 		{
@@ -266,9 +289,47 @@ TEST test_random(void)
 
 		// check heap integrity
 		ASSERT(mcheap_is_intact());
+		if((count & 0x0000FFFF) == 0)
+			printf("allocate=%"PRIu32", free=%"PRIu32", realloc_bigger=%"PRIu32", realloc_same=%"PRIu32", realloc_smaller=%"PRIu32", total=%"PRIu32"\n", count_allocate, count_free, count_realloc_bigger, count_realloc_same, count_realloc_smaller, count_allocate+count_free+count_realloc_bigger+count_realloc_same+count_realloc_smaller);
 	};
 	mcheap_reinit();
 	PASS();
+}
+
+static int random_realloc(char **ptr_ptr, int *size_ptr, uint32_t *crc_ptr)
+{
+	char *ptr = *ptr_ptr;
+	int old_size = *size_ptr;
+	uint32_t crc = *crc_ptr;
+	uint32_t new_crc;
+	int new_size = choose_allocation_size();
+	int retval = 0;
+
+	if(new_size >= old_size)
+	{
+		ptr = mcheap_reallocate(ptr, new_size);			// potentially increase allocation size
+		if(crc != crc32_add(0, ptr, old_size))			// check content was not destroyed on size increase
+			retval = ERR_REALLOC_BROKE_ON_INCREASE;
+		clutter(ptr, new_size);							// create new content
+		new_crc = crc32_add(0, ptr, new_size);				
+		if(new_size > old_size)
+			count_realloc_bigger++;
+		else
+			count_realloc_same++;
+	}
+	else
+	{
+		new_crc = crc32_add(0, ptr, new_size);				// calculate new crc of smaller content
+		ptr = mcheap_reallocate(ptr, new_size);				// decrease allocation size
+		if(new_crc != crc32_add(0, ptr, new_size))			// check remaining content was not destroyed
+			retval = ERR_REALLOC_BROKE_ON_DECREASE;
+		count_realloc_smaller++;
+	};
+
+	*ptr_ptr = ptr; 	
+	*size_ptr = new_size;
+	*crc_ptr = new_crc;
+	return retval;
 }
 
 static void clutter(char* dst, size_t sz)

@@ -10,12 +10,16 @@
 //********************************************************************************************************
 
 	#ifndef MCHEAP_SIZE
-		#define MCHEAP_SIZE 1000
-		#warning "MCHEAP_SIZE not defined, using default size of 1000. Add -DMCHEAP_SIZE=<size in bytes> to compiler options."
+		#define MCHEAP_SIZE 1024
+		#warning "MCHEAP_SIZE not defined, using default size of 1024. Add -DMCHEAP_SIZE=<size in bytes> to compiler options."
 	#endif
 
 	#ifndef MCHEAP_ALIGNMENT
-		#define MCHEAP_ALIGNMENT 	(sizeof(void*))
+		#define MCHEAP_ALIGNMENT 	__BIGGEST_ALIGNMENT__
+	#endif
+
+	#if MCHEAP_SIZE % MCHEAP_ALIGNMENT != 0
+	#error "MCHEAP SIZE IS NOT A MULTIPLE OF MCHEAP_ALIGNMENT, IT NEEDS TO BE!!"
 	#endif
 
 	struct free_struct
@@ -588,6 +592,9 @@ static bool heap_test(void)
 		}
 		else
 			section_ptr += SECTION_SIZE(USEDCAST(section_ptr));
+
+		if((intptr_t)section_ptr % MCHEAP_ALIGNMENT)
+			intact = false;
 
 		if((uint8_t*)section_ptr < heap_space || (uint8_t*)section_ptr > END_OF_HEAP)
 			intact = false;

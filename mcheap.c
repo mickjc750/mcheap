@@ -1,139 +1,40 @@
 /*
 */
 	#include <string.h>
-	#include "mcheap.h"
-
-	#ifdef MCHEAP_PROVIDE_PRNF
-		#include "prnf.h"
-	#endif
-
-	#ifndef USE_MCHEAP
-		#warning "mcheap.c is being compiled, but USE_MCHEAP is not defined. Add -DUSE_MCHEAP to compiler options, to indicate the availability of mcheap to other modules."
-	#endif
-
+	#include <stdint.h>
+	#include <stdbool.h>
+	#include <stddef.h>
+	
 //********************************************************************************************************
 // Local defines
 //********************************************************************************************************
 
 	#ifndef MCHEAP_SIZE
-		#define MCHEAP_SIZE 1000
-		#warning "MCHEAP_SIZE not defined, using default size of 1000. Add -DMCHEAP_SIZE=<size in bytes> to compiler options."
-	#endif
-
-	#ifdef MCHEAP_USE_KEYS
-	#ifndef MCHEAP_TEST
-		#warning "MCHEAP_USE_KEYS should only be used in addition to MCHEAP_TEST. Add -DMCHEAP_TEST to compiler options, or remove MCHEAP_USE_KEYS."
-	#endif
+		#define MCHEAP_SIZE 1024
+		#warning "MCHEAP_SIZE not defined, using default size of 1024. Add -DMCHEAP_SIZE=<size in bytes> to compiler options."
 	#endif
 
 	#ifndef MCHEAP_ALIGNMENT
-		#define MCHEAP_ALIGNMENT 	(sizeof(void*))
+		#define MCHEAP_ALIGNMENT 	__BIGGEST_ALIGNMENT__
 	#endif
 
-	#ifdef MCHEAP_USE_POSIX_MUTEX_LOCK
-		#include <pthread.h>
-		#define APPIF_ENTER()	pthread_mutex_lock(&mutex);
-		#define APPIF_EXIT()	pthread_mutex_unlock(&mutex);
-	#else
-		#define APPIF_ENTER()	(void)0
-		#define APPIF_EXIT()	(void)0
+	#if MCHEAP_SIZE % MCHEAP_ALIGNMENT != 0
+	#error "MCHEAP SIZE IS NOT A MULTIPLE OF MCHEAP_ALIGNMENT, IT NEEDS TO BE!!"
 	#endif
 
-	#ifdef PLATFORM_AVR
-		#define SLMEM(arg)	PSTR(arg)
-	#else
-		#define SLMEM(arg)	(arg)
-	#endif
-
-	#ifdef MCHEAP_NO_ASSERT
-		#define ERROR_ALLOCATION_FAIL()		while(true)
-		#define ERROR_REALLOC_FAIL()		while(true)
-		#define ERROR_FREE_EXTERNAL()		while(true)
-		#define ERROR_REALLOC_EXTERNAL()	while(true)
-		#define ERROR_FALSE_FREE()			while(true)
-		#define ERROR_BROKEN()				while(true)
-	#else
-		#ifdef USE_MCASSERT
-			#include "mcassert.h"
-			#ifdef MCHEAP_ID_SECTIONS
-				#define ERROR_ALLOCATION_FAIL()		assert_handle(heap_id_srcloc, SLMEM("heap-fail-alloc"))
-				#define ERROR_REALLOC_FAIL()		assert_handle(heap_id_srcloc, SLMEM("heap-fail-realloc"))
-				#define ERROR_FREE_EXTERNAL()		assert_handle(heap_id_srcloc, SLMEM("heap-free-external"))
-				#define ERROR_REALLOC_EXTERNAL()	assert_handle(heap_id_srcloc, SLMEM("heap-realloc-external"))
-				#define ERROR_FALSE_FREE()			assert_handle(heap_id_srcloc, SLMEM("heap-false-free"))
-				#define ERROR_FALSE_REALLOC()		assert_handle(heap_id_srcloc, SLMEM("heap-false-realloc"))
-				#define ERROR_BROKEN()				assert_handle(heap_id_srcloc, SLMEM("heap-broken"))
-				#define ERROR_NO_INIT()				assert_handle(heap_id_srcloc, SLMEM("heap-no-init"))
-			#else
-				#define ERROR_ALLOCATION_FAIL()		ASSERT_MSG_SL(false, "heap-fail-alloc")
-				#define ERROR_REALLOC_FAIL()		ASSERT_MSG_SL(false, "heap-fail-realloc")
-				#define ERROR_FREE_EXTERNAL()		ASSERT_MSG_SL(false, "heap-free-external")
-				#define ERROR_REALLOC_EXTERNAL()	ASSERT_MSG_SL(false, "heap-realloc-external")
-				#define ERROR_FALSE_FREE()			ASSERT_MSG_SL(false, "heap-false-free")
-				#define ERROR_FALSE_REALLOC()		ASSERT_MSG_SL(false, "heap-false-realloc")
-				#define ERROR_BROKEN()				ASSERT_MSG_SL(false, "heap-broken")
-				#define ERROR_NO_INIT()				ASSERT_MSG_SL(false, "heap-no-init")
-			#endif
-		#else
-			#include <assert.h>
-			#define ERROR_ALLOCATION_FAIL()		assert(!"heap-fail-alloc")
-			#define ERROR_REALLOC_FAIL()		assert(!"heap-fail-realloc")
-			#define ERROR_FREE_EXTERNAL()		assert(!"heap-free-external")
-			#define ERROR_REALLOC_EXTERNAL()	assert(!"heap-realloc-external")
-			#define ERROR_FALSE_FREE()			assert(!"heap-false-free")
-			#define ERROR_FALSE_REALLOC()		assert(!"heap-false-realloc")
-			#define ERROR_BROKEN()				assert(!"heap-broken")
-			#define ERROR_NO_INIT()				assert(!"heap-no-init")
-		#endif
-	#endif
-
-	#ifdef MCHEAP_USE_KEYS
-	//	Misc values for testing heap integrity
-		#define	KEY_USED	((size_t)0x47B3D19C)
-		#define KEY_FREE	((size_t)0x8BA1963F)
-		#define KEY_MERGED	((size_t)0x19751975)
-	//	(key merged overwrites a free sections key, when it is merged with the previous free section)
-	//	(it is never tested, but may be of some interest when observed in a memory dump)
-	#endif
-
-	// meta data used for free and allocated sections
-	// these can be extended with extra info if desired
-	// the size & key members must be at the same offset in both
-	// the content member must have the same name (content) in both
 	struct free_struct
 	{
-	#ifdef MCHEAP_USE_KEYS
-		size_t				key;		// key ^ size == KEY_FREE
-	#endif
 		size_t				size;		// size of empty content[] following this structure &content[size] will address the next used_struct/free_struct
-	#ifdef MCHEAP_ID_SECTIONS
-		srcloc_t 			id_srcloc;	// source location that freed this allocation
-	#endif
 		struct free_struct*	next_ptr;	// next free
-		//(insert extras here if desired)
 		// addresses memory after the structure & aligns the size of the structure
 		uint8_t		content[0] __attribute__((aligned(MCHEAP_ALIGNMENT)));
 	};
 
 	struct used_struct
 	{
-	#ifdef MCHEAP_USE_KEYS
-		size_t		key;				// key ^ size == KEY_USED
-	#endif
 		size_t		size;				// size of content[] following this structure &content[size] will address the next used_struct/free_struct
-	#ifdef MCHEAP_ID_SECTIONS
-		srcloc_t 	id_srcloc;			// source location that made this allocation
-	#endif
-		//(insert extras here if desired)
 		// addresses memory after the structure & aligns the size of the structure
 		uint8_t		content[0] __attribute__((aligned(MCHEAP_ALIGNMENT)));
-	};
-
-//	Info used for searching the heap, contains a section pointer (to either type), and the next known free section
-	struct search_point_struct
-	{
-		void* section_ptr;
-		struct free_struct *next_free_ptr;	//next free section after (or at) section_ptr, or NULL if none
 	};
 
 //	evaluate the total size of a used or free section (including it's meta data) pointed to by arg1
@@ -158,23 +59,11 @@
 		((type *)(__mptr - offsetof(type, member)));	\
 	})
 
+	#define SMALLEST_OF(x,y) ((x)<(y) ? (x):(y))
+
 //********************************************************************************************************
 // Public variables
 //********************************************************************************************************
-
-#ifdef MCHEAP_TRACK_STATS
-	//the minimum free space which has occurred since initialize() (requires MCHEAP_TRACK_STATS)
-	size_t		heap_head_room = MCHEAP_SIZE - sizeof(struct used_struct);
-
-	//the current largest allocation possible (requires MCHEAP_TRACK_STATS)
-	size_t 		heap_largest_free = MCHEAP_SIZE - sizeof(struct used_struct);
-#endif
-
-	//the current number of allocations
-	uint32_t	heap_allocations=0;
-
-	//the maximum number of allocations that has occurred
-	uint32_t	heap_allocations_max=0;
 
 //********************************************************************************************************
 // Private variables
@@ -182,24 +71,13 @@
 
 	#ifdef MCHEAP_ADDRESS
 		static uint8_t* heap_space = (uint8_t*)MCHEAP_ADDRESS;
-	#elif defined MCHEAP_RUNTIME_ADDRESS
-		static uint8_t* heap_space = NULL;
 	#else
 		static uint8_t	heap_space[MCHEAP_SIZE] __attribute__((aligned(MCHEAP_ALIGNMENT)));
 	#endif
 
-	static bool					initialized = false;
+	static bool	initialized = false;
 
 	static struct free_struct* 	first_free;
-
-	#ifdef MCHEAP_ID_SECTIONS
-		static srcloc_t 		heap_id_srcloc;
-	#endif
-
-	#ifdef MCHEAP_USE_POSIX_MUTEX_LOCK
-		#include <pthread.h>
-		pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
-	#endif
 
 //********************************************************************************************************
 // Private prototypes
@@ -211,6 +89,13 @@
 	static void* allocate(size_t size);
 	static void* reallocate(void* section, size_t new_size);
 	static void* internal_free(void* section);
+
+// relocate of realloc
+// dest_ptr must be a suitable free section capable of allocating new_size bytes.
+// removes dest_ptr from the free list, moves src_ptr to dest_ptr, and adds src_ptr to the free list
+// preserves at most new_size bytes
+// returns the new used section at dest_ptr
+	static struct used_struct* relocate(struct free_struct* dest_ptr, struct used_struct* src_ptr, size_t new_size);
 
 // 	Return true if section is in the free list
 	static bool in_free_list(struct free_struct *x);
@@ -263,381 +148,57 @@
 // 	merge does not destroy id_ info for either section, but overwrites second sections key with KEY_MERGED
 	static void free_merge_up(struct free_struct *free_ptr);
 
-// 	From any section, find the next used section, or the end of the heap.
-// 	The next free section from the starting point must be known.
-	static struct search_point_struct find_next_used(struct search_point_struct start);
-
 // 	Find largest free block. Used for tracking heap headroom.
-#ifdef MCHEAP_TRACK_STATS
-	static void free_find_largest(void);
-#endif
+	static size_t free_find_largest(void);
 
-// 	Heap test, may be used before freeing memory, to see if the heap is intact,
-// 	and also that the section about to be freed is actually a used section
-#ifdef MCHEAP_TEST
-	static bool heap_test(struct used_struct *used_ptr);
-#endif
+// 	Heap test, return true if the heap is intact.
+	static bool heap_test(void);
 
+//	Round up size to a multiple of MCHEAP_ALIGNMENT
+	static size_t align_size(size_t sz);
+
+// Ensure that size is aligned, AND that the used section will be large enough to return to the free list
+	static size_t enforce_minimum_allocation_size(size_t sz);
+
+// 	Return true, if the used section can extend down into the free section to acheive the desired size
+	static bool used_section_can_extend_down(struct free_struct* free_ptr, struct used_struct* used_ptr, size_t desired_size);
+
+// Return true, if the used section can extend up into a free section to acheive the desired size
+	static bool used_section_can_extend_up(struct used_struct* used_ptr, size_t desired_size);
 
 //********************************************************************************************************
 // Public functions
 //********************************************************************************************************
 
-#ifdef MCHEAP_RUNTIME_ADDRESS
-void heap_init(void* addr)
+void* mcheap_allocate(size_t size)
 {
-	APPIF_ENTER();
-	if(!heap_space)
-	{
-		heap_space = addr;
-		initialize();
-	};
-	APPIF_EXIT();
-}
-#endif
-
-#ifdef MCHEAP_PROVIDE_STDLIB_FUNCTIONS
-void* malloc(size_t size)
-{
-	void* retval;
-	APPIF_ENTER();
-	#ifdef MCHEAP_ID_SECTIONS
-		heap_id_srcloc = SRCLOC;
-	#endif
-
-	#ifdef MCHEAP_TRACK_STATS
-	if(size >= heap_largest_free)	//mimic malloc's null return if heap_largest_free is tracked
-		retval = NULL;
-	else
-	#endif
-		retval = allocate(size);
-
-	APPIF_EXIT();
-	return retval;
+	return allocate(size);
 }
 
-void* calloc(size_t n, size_t size)
+void* mcheap_reallocate(void* section, size_t new_size)
 {
-	void* retval;
-
-	APPIF_ENTER();
-	#ifdef MCHEAP_ID_SECTIONS
-		heap_id_srcloc = SRCLOC;
-	#endif
-	size *= n;
-
-	#ifdef MCHEAP_TRACK_STATS
-	if(size >= heap_largest_free)	//mimic malloc's null return if heap_largest_free is tracked
-		retval = NULL;
-	else
-	#endif
-		retval = allocate(size);
-
-	if(retval)
-		memset(retval, 0, size);
-
-	APPIF_EXIT();
-	return retval;
+	return reallocate(section, new_size);
 }
 
-void *realloc(void *ptr, size_t size)
+void* mcheap_free(void* section)
 {
-	void* retval;
-
-	APPIF_ENTER();
-	#ifdef MCHEAP_ID_SECTIONS
-		heap_id_srcloc = SRCLOC;
-	#endif
-
-	#ifdef MCHEAP_TRACK_STATS
-	if(size >= heap_largest_free)	//offer a null return if realloc *may* not be possible
-		retval = NULL;
-	else
-	#endif
-		retval = reallocate(ptr, size);
-
-	APPIF_EXIT();
-	return retval;
+	return internal_free(section);
 }
 
-void free(void* ptr)
+size_t mcheap_largest_free(void)
 {
-	APPIF_ENTER();
-	#ifdef MCHEAP_ID_SECTIONS
-		heap_id_srcloc = SRCLOC;
-	#endif
-	internal_free(ptr);
-	APPIF_EXIT();
-}
-#endif
-
-
-#ifdef MCHEAP_ID_SECTIONS
-void* heap_allocate_id(size_t size, srcloc_t srcloc)
-#else
-void* heap_allocate(size_t size)
-#endif
-{
-	void* retval;
-	APPIF_ENTER();
-	#ifdef MCHEAP_ID_SECTIONS
-		heap_id_srcloc = srcloc;
-	#endif
-
-	retval = allocate(size);
-
-	APPIF_EXIT();
-	return retval;
+	return free_find_largest();
 }
 
-#ifdef MCHEAP_ID_SECTIONS
-void* heap_reallocate_id(void* section, size_t new_size, srcloc_t srcloc)
-#else
-void* heap_reallocate(void* section, size_t new_size)
-#endif
+bool mcheap_is_intact(void)
 {
-	void* retval;
-	APPIF_ENTER();
-	#ifdef MCHEAP_ID_SECTIONS
-		heap_id_srcloc = srcloc;
-	#endif
-
-	retval = reallocate(section, new_size);
-	APPIF_EXIT();
-
-	return retval;
+	return heap_test();
 }
 
-
-#ifdef MCHEAP_ID_SECTIONS
-void* heap_free_id(void* section, srcloc_t srcloc)
-#else
-void* heap_free(void* section)
-#endif
+void mcheap_reinit(void)
 {
-	APPIF_ENTER();
-	#ifdef MCHEAP_ID_SECTIONS
-		heap_id_srcloc = srcloc;
-	#endif
-
-	internal_free(section);
-	APPIF_EXIT();
-
-	return NULL;
+	initialize();
 }
-
-//return true if pointer is within the heap
-bool heap_contains(void* section)
-{
-	bool retval;
-	
-	APPIF_ENTER();
-	if(!initialized)
-		initialize();
-
-	retval = ( (heap_space < (uint8_t*)section) && ((uint8_t*)section < &heap_space[MCHEAP_SIZE]) );
-	APPIF_EXIT();
-	return retval;
-}
-
-#ifdef MCHEAP_ID_SECTIONS
-struct heap_list_struct heap_list(unsigned int n)
-{
-	struct heap_list_struct retval = {0};
-	struct search_point_struct search_base;
-
-	APPIF_ENTER();
-	if(!initialized)
-		initialize();
-
-	search_base.section_ptr = heap_space;
-	search_base.next_free_ptr = first_free;
-	if(heap_space == (uint8_t*)first_free)
-		search_base = find_next_used(search_base);
-
-	while(n-- && search_base.section_ptr != END_OF_HEAP)
-		search_base = find_next_used(search_base);
-
-	if(search_base.section_ptr != END_OF_HEAP)
-	{
-		retval.srcloc 	= USEDCAST(search_base.section_ptr)->id_srcloc;
-		retval.size 	= USEDCAST(search_base.section_ptr)->size;
-		retval.content 	= USEDCAST(search_base.section_ptr)->content;
-	};
-	APPIF_EXIT();
-	return retval;
-}
-
-struct heap_leakid_struct heap_find_leak(void)
-{
-	struct heap_leakid_struct record = {0};
-	struct search_point_struct search_base;
-	struct search_point_struct search_id;
-
-	srcloc_t srcloc;
-	uint32_t cnt;
-	bool found_next_id = true;
-
-	APPIF_ENTER();
-	if(!initialized)
-		initialize();
-
-	search_base.section_ptr = heap_space;
-	search_base.next_free_ptr = first_free;
-
-//	if(heap_space == first_free)  todo: should thi next line be conditional?? what if the first section is used? it should be counted
-	search_base = find_next_used(search_base);
-
-	while(search_base.section_ptr != END_OF_HEAP && found_next_id)
-	{
-		srcloc = USEDCAST(search_base.section_ptr)->id_srcloc;
-		search_id = search_base;
-		found_next_id = false;
-		cnt = 0;
-		while(search_id.section_ptr != END_OF_HEAP)
-		{
-			if(srcloc_is_eq(srcloc, USEDCAST(search_id.section_ptr)->id_srcloc))
-				cnt++;
-			else if(!found_next_id)
-			{
-				search_base = search_id;
-				found_next_id = true;
-			};
-
-			search_id = find_next_used(search_id);
-		};
-
-		if(cnt > record.cnt)
-		{
-			record.cnt = cnt;
-			record.srcloc = srcloc;
-		};
-	};
-
-	APPIF_EXIT();
-	return record;
-}
-#endif
-
-
-#ifdef MCHEAP_PROVIDE_PRNF
-
-#ifndef MCHEAP_PRNF_GROW_STEP
-	#define MCHEAP_PRNF_GROW_STEP 30
-#endif
-
-struct dynbuf_struct
-{
-	size_t size;
-	size_t pos;
-	char* buf;
-};
-
-static void append_char(void* buf, char x);
-static void append_char(void* buf, char x)
-{
-	struct dynbuf_struct* dynbuf = (struct dynbuf_struct*)buf;
-	if(dynbuf->pos == dynbuf->size-1)
-	{
-		dynbuf->buf = reallocate(dynbuf->buf, dynbuf->size+MCHEAP_PRNF_GROW_STEP);
-		dynbuf->size += MCHEAP_PRNF_GROW_STEP;
-	};
-	dynbuf->buf[dynbuf->pos++] = x;
-	dynbuf->buf[dynbuf->pos] = 0;
-}
-
-#ifdef MCHEAP_ID_SECTIONS
-char* heap_prnf_id(srcloc_t srcloc, const char* fmt, ...)
-#else
-char* heap_prnf(const char* fmt, ...)
-#endif
-{
-	char* retval;
-	va_list va;
-	va_start(va, fmt);
-
-	#ifdef MCHEAP_ID_SECTIONS
-	retval = heap_vprnf_id(srcloc, fmt, va);
-	#else
-	retval = heap_vprnf(fmt, va);
-	#endif
-
-	va_end(va);
-	return retval;
-}
-
-#ifdef MCHEAP_ID_SECTIONS
-char* heap_vprnf_id(srcloc_t srcloc, const char* fmt, va_list va)
-#else
-char* heap_vprnf(const char* fmt, va_list va)
-#endif
-{
-	struct dynbuf_struct dynbuf;
-
-	APPIF_ENTER();
-	#ifdef MCHEAP_ID_SECTIONS
-		heap_id_srcloc = srcloc;
-	#endif
-
-	dynbuf.size = strlen(fmt)+MCHEAP_PRNF_GROW_STEP;
-	dynbuf.pos = 0;
-	dynbuf.buf = allocate(dynbuf.size);
-
-	vfptrprnf(append_char, &dynbuf, fmt, va);
-	append_char(&dynbuf, 0);	//terminate
-	dynbuf.buf = reallocate(dynbuf.buf, dynbuf.pos+1);
-
-	APPIF_EXIT();
-	return dynbuf.buf;
-};
-
-#ifdef PLATFORM_AVR
-#ifdef MCHEAP_ID_SECTIONS
-char* heap_prnf_P_id(srcloc_t srcloc, PGM_P fmt, ...)
-#else
-char* heap_prnf_P(PGM_P fmt, ...)
-#endif
-{
-	char* retval;
-	va_list va;
-	va_start(va, fmt);
-
-	#ifdef MCHEAP_ID_SECTIONS
-	retval = heap_vprnf_P_id(srcloc, fmt, va);
-	#else
-	retval = heap_vprnf_P(fmt, va);
-	#endif
-	
-	va_end(va);
-	return retval;
-};
-
-#ifdef MCHEAP_ID_SECTIONS
-char* heap_vprnf_P_id(srcloc_t srcloc, PGM_P fmt, va_list va)
-#else
-char* heap_vprnf_P(PGM_P fmt, va_list va)
-#endif
-{
-	struct dynbuf_struct dynbuf;
-
-	APPIF_ENTER();
-	#ifdef MCHEAP_ID_SECTIONS
-		heap_id_srcloc = srcloc;
-	#endif
-
-	dynbuf.size = strlen_P(fmt)+MCHEAP_PRNF_GROW_STEP;
-	dynbuf.pos = 0;
-	dynbuf.buf = allocate(dynbuf.size);
-
-	vfptrprnf_P(append_char, &dynbuf, fmt, va);
-	append_char(&dynbuf, 0);	//terminate
-	dynbuf.buf = reallocate(dynbuf.buf, dynbuf.pos+1);
-	APPIF_EXIT();
-	return dynbuf.buf;
-}
-#endif
-
-#endif	//PLATFORM_AVR
 
 //********************************************************************************************************
 // Private functions
@@ -645,21 +206,10 @@ char* heap_vprnf_P(PGM_P fmt, va_list va)
 
 static void initialize(void)
 {
-	#ifdef MCHEAP_RUNTIME_ADDRESS
-	if(heap_space == NULL)
-		ERROR_NO_INIT();
-	#endif
-
-	initialized=true;
+	initialized = true;
 	first_free = (void*)heap_space;		//init head of the free list
-
-//	initialize free space
-	first_free->size 	= MCHEAP_SIZE - sizeof(struct free_struct);
-	#ifdef MCHEAP_USE_KEYS
-		first_free->key 	= first_free->size ^ KEY_FREE;
-	#endif
-
-	first_free->next_ptr 	= NULL;
+	first_free->size = MCHEAP_SIZE - sizeof(struct free_struct);
+	first_free->next_ptr = NULL;
 }
 
 static void* allocate(size_t size)
@@ -671,19 +221,8 @@ static void* allocate(size_t size)
 	if(!initialized)
 		initialize();
 
-//	align size
-	if(size & (MCHEAP_ALIGNMENT-1))
-		size += MCHEAP_ALIGNMENT;
-	size &= ~(size_t)(MCHEAP_ALIGNMENT-1);
+	size = enforce_minimum_allocation_size(size);
 
-//	allocation must be large enough to return to the free list
-	if(sizeof(struct used_struct) + size < sizeof(struct free_struct))
-		size = sizeof(struct free_struct) - sizeof(struct used_struct);
-
-	#ifdef MCHEAP_TEST
-		heap_test(NULL);
-	#endif
-	
 	free_ptr = free_walk(size);
 	if(free_ptr)
 	{
@@ -693,125 +232,53 @@ static void* allocate(size_t size)
 		retval = used_ptr->content;
 	};
 
-	if(!retval)
-		ERROR_ALLOCATION_FAIL();
-	else
-	{
-		heap_allocations++;
-		if(heap_allocations > heap_allocations_max)
-			heap_allocations_max = heap_allocations;
-	};
-
-	#ifdef MCHEAP_TRACK_STATS
-		free_find_largest();
-	#endif
-
 	return retval;
 }
 
 static void* reallocate(void* section, size_t new_size)
 {
 	struct free_struct* free_ptr;
-	struct free_struct* dest_ptr=NULL;
+	struct free_struct* relocation_ptr;
 	struct used_struct* used_ptr;
-	struct used_struct* new_used_ptr=NULL;
+	struct used_struct* new_used_ptr = NULL;
 	void* retval = NULL;
 
 	if(!initialized)
 		initialize();
 
 	if(section == NULL)
-	{
 		retval = allocate(new_size);					//if section == NULL just call allocate()
-	}
 	else if(new_size == 0)
-	{
 		retval = internal_free(section);
-	}
 	else
 	{
-		if(!heap_contains(section))
-			ERROR_REALLOC_EXTERNAL();
-
-		// align size
-		if(new_size & (MCHEAP_ALIGNMENT-1))
-			new_size += MCHEAP_ALIGNMENT;
-		new_size &= ~(size_t)(MCHEAP_ALIGNMENT-1);
-
-		// allocation must be large enough to return to the free list
-		if(sizeof(struct used_struct) + new_size < sizeof(struct free_struct))
-			new_size = sizeof(struct free_struct) - sizeof(struct used_struct);
-
+		new_size = enforce_minimum_allocation_size(new_size);
 		used_ptr = container_of(section, struct used_struct, content);
 
-		#ifdef MCHEAP_TEST
-		// fail if this is not a used section
-		if(!heap_test(used_ptr))
-			ERROR_FALSE_REALLOC();
-		#endif
-
 		// find space for new allocation
-		free_ptr = free_walk(new_size);
+		relocation_ptr = free_walk(new_size);
 
-		// space below?
-		if(free_ptr && (void*)free_ptr < (void*)used_ptr)
-		{
-			dest_ptr = free_ptr;	//destination below (optimal)
-		}
+		// relocate to a lower address? (1st preference to minimize fragmentation)
+		if(relocation_ptr && (void*)relocation_ptr < (void*)used_ptr)
+			new_used_ptr = relocate(relocation_ptr, used_ptr, new_size);
+
 		else
 		{
-			dest_ptr = free_ptr;	//destination above (or NULL)
-
-			//Can we extend down?
-			free_ptr = find_free_below(used_ptr);
-			if(free_ptr)
+			free_ptr = find_free_below(used_ptr); 
+			if(used_section_can_extend_down(free_ptr, used_ptr, new_size)) // 2nd preference
 			{
-				if(SECTION_AFTER(free_ptr) == used_ptr)
-				{
-					//Yes, can we extend down enough?
-					if(used_ptr->size + SECTION_SIZE(free_ptr) >= new_size)
-					{
-						free_remove(free_ptr);
-						new_used_ptr = used_extend_down(free_ptr, used_ptr, new_size);
-						dest_ptr = NULL;
-					};
-				};
-			};
-			
-			//Can we extend up?
-			if(!new_used_ptr && in_free_list(SECTION_AFTER(used_ptr)))
+				free_remove(free_ptr);
+				new_used_ptr = used_extend_down(free_ptr, used_ptr, new_size);
+			}
+			else if(new_size <= used_ptr->size)	//shrink in place? 3rd preference
+				new_used_ptr = used_ptr;
+			else if(used_section_can_extend_up(used_ptr, new_size))	//4th preference
 			{
-				//Yes, can we extend up enough?
-				free_ptr = SECTION_AFTER(used_ptr);
-				if(used_ptr->size + SECTION_SIZE(free_ptr) >= new_size)
-				{
-					free_remove(free_ptr);
-					new_used_ptr = used_extend_up(used_ptr);
-					dest_ptr = NULL;
-				};
-			};
-		};
-
-		//full relocation needed? (we were unable to extend)
-		if(dest_ptr)
-		{
-			//remove from free list
-			free_remove(dest_ptr);
-
-			//convert free section to used section
-			new_used_ptr = free_to_used(dest_ptr);
-
-			//copy content
-			if(new_size < used_ptr->size)
-				memcpy(new_used_ptr->content, used_ptr->content, new_size);
-			else
-				memcpy(new_used_ptr->content, used_ptr->content, used_ptr->size);
-
-			//free the original used section
-			free_ptr = used_to_free(used_ptr);
-
-			free_insert(free_ptr);	// insert it into the free list
-			free_merge(free_ptr);	// and merge with adjacent free sections
+				free_remove(SECTION_AFTER(used_ptr));
+				new_used_ptr = used_extend_up(used_ptr);
+			}
+			else if(relocation_ptr)
+				new_used_ptr = relocate(relocation_ptr, used_ptr, new_size);	// 5th preference, relocate to higher address
 		};
 
 		// Shrink the new used section if possible
@@ -820,15 +287,26 @@ static void* reallocate(void* section, size_t new_size)
 			used_shrink(new_used_ptr, new_size);
 			retval = new_used_ptr->content;
 		};
-
-		if(!retval)
-			ERROR_REALLOC_FAIL();
-
-		#ifdef MCHEAP_TRACK_STATS
-			free_find_largest();
-		#endif
 	};
 	return retval;
+}
+
+// relocate of realloc
+// dest_ptr must be a suitable free section capable of allocating new_size bytes.
+// removes dest_ptr from the free list, moves src_ptr to dest_ptr, and adds src_ptr to the free list
+// preserves at most new_size bytes
+// returns the new used section at dest_ptr, does not shrink the destination.
+static struct used_struct* relocate(struct free_struct* dest_ptr, struct used_struct* src_ptr, size_t new_size)
+{
+	struct used_struct* new_used_ptr;
+	struct free_struct* new_free_ptr;
+	free_remove(dest_ptr);
+	new_used_ptr = free_to_used(dest_ptr);
+	memcpy(new_used_ptr->content, src_ptr->content, SMALLEST_OF(new_size, src_ptr->size));
+	new_free_ptr = used_to_free(src_ptr);
+	free_insert(new_free_ptr);	// insert it into the free list
+	free_merge(new_free_ptr);	// and merge with adjacent free sections
+	return new_used_ptr;
 }
 
 static void* internal_free(void* section)
@@ -839,45 +317,21 @@ static void* internal_free(void* section)
 	if(!initialized)
 		initialize();
 
-	if(section==NULL)
+	if(section != NULL)
 	{
-		#ifdef MCHEAP_TEST
-			heap_test(NULL);
-		#endif
-	}
-	else
-	{
-		// not null, is it in the heap?
-		if(!heap_contains(section))
-			ERROR_FREE_EXTERNAL();
-		else
-		{
-			//in the heap
-			used_ptr = container_of(section, struct used_struct, content);
-			#ifdef MCHEAP_TEST
-			if(!heap_test(used_ptr))
-				ERROR_FALSE_FREE();
-			#endif
+		used_ptr = container_of(section, struct used_struct, content);
 			
-			free_ptr = used_to_free(used_ptr);	//convert to free section
-			free_insert(free_ptr);				//insert into the free list
-			free_merge(free_ptr);				//merge with adjacent free sections
-
-			#ifdef MCHEAP_TRACK_STATS
-				free_find_largest();
-			#endif
-			heap_allocations--;
-		};
+		free_ptr = used_to_free(used_ptr);	//convert to free section
+		free_insert(free_ptr);				//insert into the free list
+		free_merge(free_ptr);				//merge with adjacent free sections
 	};
 	return NULL;
 }
 
-//
 // Shrink used section so that it's content is reduced to the new_size.
 // This will only happen if doing so allows a new free section to be created.
 // new_size should be pre-aligned by the caller
 // If created, the new free section will be inserted into the free list, and merged if possible
-//
 static void used_shrink(struct used_struct *used_ptr, size_t new_size)
 {
 	struct free_struct *free_ptr;
@@ -892,34 +346,18 @@ static void used_shrink(struct used_struct *used_ptr, size_t new_size)
 
 			//construct remaining free section
 			free_ptr->size = used_ptr->size - new_size - sizeof(struct free_struct);
-			#ifdef MCHEAP_USE_KEYS
-				free_ptr->key = free_ptr->size ^ KEY_FREE;
-			#endif
-			#ifdef MCHEAP_ID_SECTIONS
-				free_ptr->id_srcloc = SRCLOC;
-			#endif
 
 			//shrink used section
 			used_ptr->size = new_size;
 
-			//correct used sections key
-			#ifdef MCHEAP_USE_KEYS
-				used_ptr->key 	= used_ptr->size ^ KEY_USED;
-			#endif
-
-			//insert new free section into the free list
 			free_insert(free_ptr);
-
-			//merge with the following free section if possible
 			free_merge_up(free_ptr);
 		};
 	};
 }
 
-//
 // Convert a used section to a free section, does not insert into the free list
 // Returns the result
-// 
 static struct free_struct* used_to_free(struct used_struct *used_ptr)
 {
 	struct free_struct *free_ptr;
@@ -927,20 +365,12 @@ static struct free_struct* used_to_free(struct used_struct *used_ptr)
 //	Build new free section
 	free_ptr = (void*)used_ptr;
 	free_ptr->size = SECTION_SIZE(used_ptr) - sizeof(struct free_struct);
-	#ifdef MCHEAP_USE_KEYS
-		free_ptr->key = KEY_FREE ^ free_ptr->size;
-	#endif
-	#ifdef MCHEAP_ID_SECTIONS
-		free_ptr->id_srcloc = heap_id_srcloc;
-	#endif
 
 	return free_ptr;
 }
 
-//
 // Convert a free section into a used section, free section must be removed from the free list beforehand
 // Returns the result
-// 
 static struct used_struct* free_to_used(struct free_struct *free_ptr)
 {
 	struct used_struct *used_ptr;
@@ -948,20 +378,29 @@ static struct used_struct* free_to_used(struct free_struct *free_ptr)
 //	Build new used section
 	used_ptr = (void*)free_ptr;
 	used_ptr->size = SECTION_SIZE(free_ptr) - sizeof(struct used_struct);
-	#ifdef MCHEAP_USE_KEYS
-		used_ptr->key = KEY_USED ^ used_ptr->size;
-	#endif
-	#ifdef MCHEAP_ID_SECTIONS
-		used_ptr->id_srcloc = heap_id_srcloc;
-	#endif
 	return used_ptr;
 }
 
-//
+// Return true, if the used section can extend down into the free section to acheive the desired size
+static bool used_section_can_extend_down(struct free_struct* free_ptr, struct used_struct* used_ptr, size_t desired_size)
+{
+	return (free_ptr
+		&& (SECTION_AFTER(free_ptr) == used_ptr)
+		&& (used_ptr->size + SECTION_SIZE(free_ptr) >= desired_size));
+}
+
+// Return true, if the used section can extend up into a free section to acheive the desired size
+static bool used_section_can_extend_up(struct used_struct* used_ptr, size_t desired_size)
+{
+	struct free_struct* free_ptr = SECTION_AFTER(used_ptr);
+
+	return (in_free_list(free_ptr)
+		&& (used_ptr->size + SECTION_SIZE(free_ptr) >= desired_size) );
+}
+
 // Extend a used section into a lower free section, also moves content limited to 'preserve_size' bytes
 // Free section must be removed from the free list before calling this function
 // Returns the resulting used section
-//
 static struct used_struct* used_extend_down(struct free_struct *free_ptr, struct used_struct *used_ptr, size_t preserve_size)
 {
 	size_t extra_size;
@@ -982,18 +421,11 @@ static struct used_struct* used_extend_down(struct free_struct *free_ptr, struct
 //	extend used section
 	used_ptr->size += extra_size;
 
-//	correct used sections key
-	#ifdef MCHEAP_USE_KEYS
-		used_ptr->key = used_ptr->size ^ KEY_USED;
-	#endif
-
 	return used_ptr;
 }
 
-//
 // Extend a used section into a higher free section
 // The higher free section must be removed from the free list before calling this function
-//
 static struct used_struct* used_extend_up(struct used_struct *used_ptr)
 {
 	struct free_struct *free_ptr;
@@ -1004,18 +436,12 @@ static struct used_struct* used_extend_up(struct used_struct *used_ptr)
 
 	used_ptr->size += ext_size;
 
-	#ifdef MCHEAP_USE_KEYS
-		used_ptr->key = used_ptr->size ^ KEY_USED;
-	#endif
-
 	return used_ptr;
 }
 
-//
 // Find free below
 // Find the last free section before target section (either type), if there is one
 // Otherwise return NULL
-//
 static struct free_struct* find_free_below(void* target)
 {
 	struct free_struct *free_ptr;
@@ -1044,9 +470,7 @@ static struct free_struct* free_walk(size_t size)
 	return free_ptr;
 }
 
-//
 // Return true if section is in the free list
-//
 static bool in_free_list(struct free_struct *section)
 {
 	struct 	free_struct *free_ptr;
@@ -1061,10 +485,8 @@ static bool in_free_list(struct free_struct *section)
 	return retval;
 }
 
-//
 // Insert a free section into the free list
 // Walks the free list to find the insertion point
-//
 static void free_insert(struct free_struct *new_free)
 {
 	struct free_struct **link_ptr;
@@ -1082,10 +504,8 @@ static void free_insert(struct free_struct *new_free)
 	(*link_ptr) = new_free;
 }
 
-//
 // Remove a free section from the free list
 // Walks the free list to find the link to modify
-//
 static void free_remove(struct free_struct *free_ptr)
 {
 	struct free_struct **link_ptr;
@@ -1099,10 +519,8 @@ static void free_remove(struct free_struct *free_ptr)
 	(*link_ptr) = free_ptr->next_ptr;
 }
 
-//
 // Merge free section with adjacent free sections
 // All free sections must already be in the free list
-//
 static void free_merge(struct free_struct *free_ptr)
 {
 	struct free_struct *below;
@@ -1113,10 +531,7 @@ static void free_merge(struct free_struct *free_ptr)
 		free_merge_up(below);
 }
 
-//
 // Merge free section into the next free section if possible
-// merge does not destroy id_ info for either section, but overwrites second sections key with KEY_MERGED
-//
 static void free_merge_up(struct free_struct *free_ptr)
 {
 	//if there is a free section after this one
@@ -1128,65 +543,17 @@ static void free_merge_up(struct free_struct *free_ptr)
 			//increase size of this free section, by total size of next section
 			free_ptr->size += SECTION_SIZE(free_ptr->next_ptr);
 
-			//correct extended sections key, and destroy next free sections key
-			#ifdef MCHEAP_USE_KEYS
-				free_ptr->key 	= free_ptr->size ^ KEY_FREE;
-				free_ptr->next_ptr->key = KEY_MERGED;
-			#endif
-
 			//copy next free sections link to this section
 			free_ptr->next_ptr = free_ptr->next_ptr->next_ptr;
 		};
 	};
 }
 
-//
-// From any section, find the next used section, or the end of the heap.
-// The next free section from the starting point must be known.
-//
-static struct search_point_struct find_next_used(struct search_point_struct start)
-{
-	struct search_point_struct search;
-
-	search = start;
-
-	//If starting on a free section
-	if(search.section_ptr == (void*)(search.next_free_ptr))
-	{
-		//jump until used section or end of heap
-		while(search.section_ptr == (void*)(search.next_free_ptr))
-		{
-			search.section_ptr = SECTION_AFTER(search.next_free_ptr);
-			search.next_free_ptr = (search.next_free_ptr)->next_ptr;
-		};
-	}
-	//If starting on a used section
-	else
-	{
-		//jump once
-		search.section_ptr = SECTION_AFTER(USEDCAST(search.section_ptr));
-
-		//jump until used section or end of heap
-		while(search.section_ptr == (void*)(search.next_free_ptr))
-		{
-			search.section_ptr = SECTION_AFTER(search.next_free_ptr);
-			search.next_free_ptr = (search.next_free_ptr)->next_ptr;
-		};
-	};
-
-	return search;
-}
-
-//
 // Find largest free block. Used for tracking heap headroom.
-//
-#ifdef MCHEAP_TRACK_STATS
-static void free_find_largest(void)
+static size_t free_find_largest(void)
 {
 	struct free_struct *free_ptr;
 	size_t largest=0;
-
-	heap_largest_free = 0;
 	if(first_free)
 	{
 		free_ptr = first_free;
@@ -1200,87 +567,55 @@ static void free_find_largest(void)
 	//	convert to allocatable content size
 		largest += sizeof(struct free_struct);
 		if(largest >= sizeof(struct used_struct))
-			heap_largest_free = largest - sizeof(struct used_struct);
+			largest -= sizeof(struct used_struct);
 	};
 
-	if(heap_largest_free < heap_head_room)
-		heap_head_room = heap_largest_free;
+	return largest;
 }
-#endif
 
-//
 // Heap test, may be used before freeing memory, to see if the heap is intact,
-// and also that the section about to be freed is actually a used section
-//
-#ifdef MCHEAP_TEST
-	static bool heap_test(struct used_struct *used_ptr)	
-	#ifdef MCHEAP_USE_KEYS
+static bool heap_test(void)	
 {
 	struct free_struct *next_free_ptr;
 	void* section_ptr;
-	bool used_found=false;
+	bool intact = true;
 
 	next_free_ptr = first_free;
 	section_ptr = heap_space;
 
-	while(section_ptr != &heap_space[MCHEAP_SIZE])
+	while(intact && section_ptr != END_OF_HEAP)
 	{
-		//if this is a free section
-		if(FREECAST(section_ptr)->key == (KEY_FREE ^ FREECAST(section_ptr)->size))
-		{
-			//if this does not equal the last free link, heap is broken
-			if(section_ptr != (void*)next_free_ptr)
-				ERROR_BROKEN();
-			//next free section == this free link
-			next_free_ptr = FREECAST(section_ptr)->next_ptr;
-			//section_ptr = &(FREECAST(section_ptr)->content[FREECAST(section_ptr)->size]);
-			section_ptr += SECTION_SIZE(FREECAST(section_ptr));
-		}
-		//if this is a used section
-		else if(USEDCAST(section_ptr)->key == (KEY_USED ^ USEDCAST(section_ptr)->size))
-		{
-			//is this the used section we are looking for?
-			if(section_ptr == (void*)used_ptr)
-				used_found = true;
-			section_ptr += SECTION_SIZE(USEDCAST(section_ptr));
-		}
-		else
-			ERROR_BROKEN();
-	};
-	return !(used_ptr && !used_found);
-}
-	#else
-{
-	struct free_struct *next_free_ptr;
-	void* section_ptr;
-	bool used_found=false;
-
-	next_free_ptr = first_free;
-	section_ptr = heap_space;
-
-	while(section_ptr != &heap_space[MCHEAP_SIZE])
-	{
-		//free section?
 		if(section_ptr == (void*)next_free_ptr)
 		{
-			//next free section == this free link
 			next_free_ptr = FREECAST(section_ptr)->next_ptr;
-			//section_ptr = &(FREECAST(section_ptr)->content[FREECAST(section_ptr)->size]);
 			section_ptr += SECTION_SIZE(FREECAST(section_ptr));
 		}
-		//else this is a used section
 		else
-		{
-			//is this the used section we are looking for?
-			if(section_ptr == (void*)used_ptr)
-				used_found = true;
 			section_ptr += SECTION_SIZE(USEDCAST(section_ptr));
-		};
 
-		if((uint8_t*)section_ptr < heap_space || (uint8_t*)section_ptr > &heap_space[MCHEAP_SIZE])
-			ERROR_BROKEN();
+		if((intptr_t)section_ptr % MCHEAP_ALIGNMENT)
+			intact = false;
+
+		if((uint8_t*)section_ptr < heap_space || (uint8_t*)section_ptr > END_OF_HEAP)
+			intact = false;
 	};
-	return !(used_ptr && !used_found);
+	return intact;
 }
-	#endif
-#endif
+
+// Ensure that size is aligned, AND that the used section will be large enough to return to the free list
+static size_t enforce_minimum_allocation_size(size_t sz)
+{
+	sz = align_size(sz);
+
+	if(sizeof(struct used_struct) + sz < sizeof(struct free_struct))
+		sz = sizeof(struct free_struct) - sizeof(struct used_struct);
+
+	return sz;
+}
+
+static size_t align_size(size_t sz)
+{
+	if(sz % MCHEAP_ALIGNMENT)
+		sz += MCHEAP_ALIGNMENT - (sz % MCHEAP_ALIGNMENT);
+	return sz;
+}

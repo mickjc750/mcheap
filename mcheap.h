@@ -8,16 +8,16 @@ Configuration
  The following symbols may be defined to configure heap features:
 
 MCHEAP_SIZE
- 	The heap size in bytes. If this is not defined the default value of 1000 will be used
+ 	The heap size in bytes. If this is not defined the default value of 1024 will be used.
 
 MCHEAP_ALIGNMENT
 	Ensure all allocations are aligned to the specified byte boundary.
-	If this is not defined, the default is sizeof(void*)
+	If this is not defined, the default is __BIGGEST_ALIGNMENT__
 
 MCHEAP_ADDRESS
 	Specify a fixed memory address for the heap. This is useful for parts which may have external RAM not covered by the linker script.
  	If this is not defined, the heap space will simply be a static uint8_t[] within the BSS section.
- 	**CAUTION** If this is used, the address provided MUST respect the MCHEAP_ALIGNMENT provided, or an alignment of sizeof(void*).
+ 	**CAUTION** If this is used, the address provided MUST respect the MCHEAP_ALIGNMENT provided, or an alignment of __BIGGEST_ALIGNMENT__
 
 */
 
@@ -39,10 +39,10 @@ MCHEAP_ADDRESS
 // Public prototypes
 //********************************************************************************************************
 
-//	Allocate memory and return it's address.
+//	Allocate memory and return it's address, or NULL on failure.
 	void*	mcheap_allocate(size_t size);
 
-/*	Reallocate ptr to be a new size.
+/*	Reallocate the memory at *ptr to be a new size.
 	If ptr is NULL, attempt a new allocation.
 	If size is 0, free the allocation and return NULL.
 	Preferred reallocate methods from 1st to last are:

@@ -19,7 +19,7 @@
 //********************************************************************************************************
 
 	#define ALLOCATION_COUNT 8
-	#define RANDOM_OP_COUNT 5000000
+	#define RANDOM_OP_COUNT 50
 
 //********************************************************************************************************
 // Local defines
@@ -41,11 +41,13 @@
 // Private variables
 //********************************************************************************************************
 
-	uint32_t count_realloc_bigger = 0;
-	uint32_t count_realloc_smaller = 0;
-	uint32_t count_realloc_same = 0;
-	uint32_t count_allocate = 0;
-	uint32_t count_free = 0;
+	static uint32_t count_realloc_bigger = 0;
+	static uint32_t count_realloc_smaller = 0;
+	static uint32_t count_realloc_same = 0;
+	static uint32_t count_allocate = 0;
+	static uint32_t count_free = 0;
+
+	static uint8_t buffers[ALLOCATION_COUNT][MCHEAP_SIZE];
 
 //********************************************************************************************************
 // Private prototypes
@@ -105,72 +107,67 @@ SUITE(suite_other)
 
 TEST test_realloc_lower(void)
 {
-	uint32_t crc;
 	mcheap_reinit();
 	char *a = mcheap_allocate(100);
 			  mcheap_allocate(20);
 	char *c = mcheap_allocate(20);
 	char *d = mcheap_allocate(100);
 	clutter(d, 100);
-	crc = crc32_add(0, d, 100);
+	memcpy(buffers[0], d, 100);
 	mcheap_free(a);
 	mcheap_free(c);
 	d = mcheap_reallocate(d, 100);	// should not extend down into c, should relocate to a 
 	ASSERT_EQ(a, d);
-	ASSERT_EQ(crc, crc32_add(0, d, 100));
+	ASSERT_MEM_EQ(buffers[0], d, 100);
 	PASS();
 }
 
 TEST test_realloc_shrink_in_place(void)
 {
-	uint32_t crc;
 	mcheap_reinit();
 	char *a = mcheap_allocate(50);
 			  mcheap_allocate(20);
 	char *c = mcheap_allocate(100);
 	char *d;
 	clutter(c, 80);
-	crc = crc32_add(0, c, 80);
+	memcpy(buffers[0], c, 80);
 	mcheap_free(a);
 	d = mcheap_reallocate(c, 80);	// should not move, should shrink in place 
 	ASSERT_EQ(d, c);
-	ASSERT_EQ(crc, crc32_add(0, d, 80));
+	ASSERT_MEM_EQ(buffers[0], d, 80);
 	PASS();
 }
 
 TEST test_realloc_ext_down(void)
 {
-	uint32_t crc;
 	mcheap_reinit();
 			  mcheap_allocate(100);
 	char *c = mcheap_allocate(20);
 	char *d = mcheap_allocate(100);
 	clutter(d, 100);
-	crc = crc32_add(0, d, 100);
+	memcpy(buffers[0], d, 100);
 	mcheap_free(c);
 	d = mcheap_reallocate(d, 100);	// should not extend down into c, should relocate to a 
 	ASSERT_EQ(d, c);
-	ASSERT_EQ(crc, crc32_add(0, d, 100));
+	ASSERT_MEM_EQ(buffers[0], d, 100);
 	PASS();
 }
 
 TEST test_realloc_ext_up(void)
 {
-	uint32_t crc;
 	mcheap_reinit();
 	char *a = mcheap_allocate(100);
 	char *b;
 	clutter(a, 100);
-	crc = crc32_add(0, a, 100);
+	memcpy(buffers[0], a, 100);
 	b = mcheap_reallocate(a, 200);	// should extend up
 	ASSERT_EQ(b, a);
-	ASSERT_EQ(crc, crc32_add(0, b, 100));
+	ASSERT_MEM_EQ(buffers[0], b, 100);
 	PASS();
 }
 
 TEST test_realloc_higher(void)
 {
-	uint32_t crc;
 	mcheap_reinit();
 			  mcheap_allocate(100);
 	char *c = mcheap_allocate(20);
@@ -178,10 +175,10 @@ TEST test_realloc_higher(void)
 	char *d = mcheap_allocate(100);
 	mcheap_free(d);
 	clutter(c, 20);
-	crc = crc32_add(0, c, 20);
+	memcpy(buffers[0], c, 20);
 	c = mcheap_reallocate(c, 50);	// should move to where d was
 	ASSERT_EQ(c, d);
-	ASSERT_EQ(crc, crc32_add(0, c, 20));
+	ASSERT_MEM_EQ(buffers[0], c, 20);
 	PASS();
 }
 

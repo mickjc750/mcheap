@@ -10,7 +10,6 @@
 	#include <inttypes.h>
 	#include <math.h>
 	#include "../mcheap.h"
-	#include "crc32.h"
 	#include "greatest.h"
 
 
@@ -19,7 +18,7 @@
 //********************************************************************************************************
 
 	#define ALLOCATION_COUNT 8
-	#define RANDOM_OP_COUNT 50
+	#define RANDOM_OP_COUNT 1000000
 
 //********************************************************************************************************
 // Local defines
@@ -66,7 +65,7 @@
 	TEST test_intact(void);
 	TEST test_random(void);
 
-	static int random_realloc(char **ptr_ptr, int *size_ptr, uint32_t *crc_ptr);
+	static int random_realloc(char **ptr_ptr, int *size_ptr, uint8_t buf[MCHEAP_SIZE]);
 	static void clutter(char* dst, size_t sz);
 	int choose_allocation_size(void);
 
@@ -238,7 +237,6 @@ TEST test_intact(void)
 TEST test_random(void)
 {
 	char* ptrs[ALLOCATION_COUNT] = {0};
-	uint32_t crcs[ALLOCATION_COUNT];
 	int sizes[ALLOCATION_COUNT];
 	int i;
 	int err;
@@ -258,7 +256,7 @@ TEST test_random(void)
 			}
 			else
 			{
-				err = random_realloc(&ptrs[i], &sizes[i], &crcs[i]);
+				err = random_realloc(&ptrs[i], &sizes[i], buffers[i]);
 				ASSERT_NEQ(ERR_REALLOC_BROKE_ON_DECREASE, err);
 				ASSERT_NEQ(ERR_REALLOC_BROKE_ON_INCREASE, err);
 			};
@@ -270,7 +268,7 @@ TEST test_random(void)
 			{
 				ptrs[i] = mcheap_allocate(sizes[i]);
 				clutter(ptrs[i], sizes[i]);
-				crcs[i] = crc32_add(0, ptrs[i], sizes[i]);
+				memcpy(buffers[i], ptrs[i], sizes[i]);
 				count_allocate++;
 			};
 		};
@@ -280,7 +278,7 @@ TEST test_random(void)
 		while(i != ALLOCATION_COUNT)
 		{
 			if(ptrs[i])
-				ASSERT_EQ(crcs[i], crc32_add(0, ptrs[i], sizes[i]));
+				ASSERT_MEM_EQ(buffers[i], ptrs[i], sizes[i]);
 			i++;
 		};
 
@@ -293,22 +291,20 @@ TEST test_random(void)
 	PASS();
 }
 
-static int random_realloc(char **ptr_ptr, int *size_ptr, uint32_t *crc_ptr)
+static int random_realloc(char **ptr_ptr, int *size_ptr, uint8_t buf[MCHEAP_SIZE])
 {
 	char *ptr = *ptr_ptr;
 	int old_size = *size_ptr;
-	uint32_t crc = *crc_ptr;
-	uint32_t new_crc;
 	int new_size = choose_allocation_size();
 	int retval = 0;
 
 	if(new_size >= old_size)
 	{
 		ptr = mcheap_reallocate(ptr, new_size);			// potentially increase allocation size
-		if(crc != crc32_add(0, ptr, old_size))			// check content was not destroyed on size increase
+		if(memcmp(buf, ptr, old_size))					// check content was not destroyed on size increase
 			retval = ERR_REALLOC_BROKE_ON_INCREASE;
 		clutter(ptr, new_size);							// create new content
-		new_crc = crc32_add(0, ptr, new_size);				
+		memcpy(buf, ptr, new_size);
 		if(new_size > old_size)
 			count_realloc_bigger++;
 		else
@@ -316,16 +312,15 @@ static int random_realloc(char **ptr_ptr, int *size_ptr, uint32_t *crc_ptr)
 	}
 	else
 	{
-		new_crc = crc32_add(0, ptr, new_size);				// calculate new crc of smaller content
+		memcpy(buf, ptr, new_size);							// update buffer with smaller content
 		ptr = mcheap_reallocate(ptr, new_size);				// decrease allocation size
-		if(new_crc != crc32_add(0, ptr, new_size))			// check remaining content was not destroyed
+		if(memcmp(buf, ptr, new_size))						// check remaining content was not destroyed
 			retval = ERR_REALLOC_BROKE_ON_DECREASE;
 		count_realloc_smaller++;
 	};
 
 	*ptr_ptr = ptr; 	
 	*size_ptr = new_size;
-	*crc_ptr = new_crc;
 	return retval;
 }
 

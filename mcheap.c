@@ -560,6 +560,10 @@ static size_t free_find_largest(void)
 {
 	struct free_struct *free_ptr;
 	size_t largest=0;
+
+	if(!initialized)
+		initialize();
+
 	if(first_free)
 	{
 		free_ptr = first_free;
@@ -585,6 +589,9 @@ static bool heap_test(void)
 	struct free_struct *next_free_ptr;
 	void* section_ptr;
 	bool intact = true;
+
+	if(!initialized)
+		initialize();
 
 	next_free_ptr = first_free;
 	section_ptr = heap_space;

@@ -31,8 +31,14 @@ MCHEAP_ADDRESS
 // Public prototypes
 //********************************************************************************************************
 
+	#ifdef MCHEAP_SANDBOX
+		#define STATIC_IF_SANDBOXED	static
+	#else
+		#define STATIC_IF_SANDBOXED
+	#endif
+
 //	Allocate memory and return it's address, or NULL on failure.
-	void*	mcheap_allocate(size_t size);
+	STATIC_IF_SANDBOXED void*	mcheap_allocate(size_t size);
 
 /*	Reallocate the memory at *ptr to be a new size.
 	If ptr is NULL, attempt a new allocation.
@@ -44,26 +50,31 @@ MCHEAP_ADDRESS
 		* extend up
 		* relocate to a higher address.
 	If heap_reallocate() fails, it will return NULL.*/
-	void*	mcheap_reallocate(void* ptr, size_t size);
+	STATIC_IF_SANDBOXED void*	mcheap_reallocate(void* ptr, size_t size);
 
 //	Free the allocation, always returns NULL
-	void*	mcheap_free(void* ptr);
+	STATIC_IF_SANDBOXED void*	mcheap_free(void* ptr);
 
 //	Return largest possible allocation that can currently be made.
-	size_t  mcheap_largest_free(void);
+	STATIC_IF_SANDBOXED size_t  mcheap_largest_free(void);
 
 //	Return true if all the heap meta data is valid and intact.
-	bool	mcheap_is_intact(void);
+	STATIC_IF_SANDBOXED bool	mcheap_is_intact(void);
 
 //	If the heap is broken, this can re-initialize it.
 //	This is used after test cases which break the heap on purpose.
-	void	mcheap_reinit(void);
+	STATIC_IF_SANDBOXED void	mcheap_reinit(void);
 #endif
 
 
 
-#ifdef MCHEAP_IMPLEMENTATION
 
+
+
+
+
+
+#ifdef MCHEAP_IMPLEMENTATION
 /*
 */
 	#include <string.h>
@@ -92,6 +103,19 @@ MCHEAP_ADDRESS
 		#endif
 	#endif
 
+	#ifdef MCHEAP_SANDBOX
+		#define STATIC_IF_SANDBOXED	static
+	#else
+		#define STATIC_IF_SANDBOXED
+	#endif
+
+	#ifndef mcheap_platform_lock
+		#define mcheap_platform_lock() ((void)0)
+	#endif
+	#ifndef mcheap_platform_unlock
+		#define mcheap_platform_unlock() ((void)0)
+	#endif
+	
 	struct free_struct
 	{
 		size_t				size;		// size of empty content[] following this structure &content[size] will address the next used_struct/free_struct
@@ -240,34 +264,55 @@ MCHEAP_ADDRESS
 // Public functions
 //********************************************************************************************************
 
-void* mcheap_allocate(size_t size)
+STATIC_IF_SANDBOXED void* mcheap_allocate(size_t size)
 {
-	return allocate(size);
+	void *retval;
+	mcheap_platform_lock();
+	retval = allocate(size);
+	mcheap_platform_unlock();
+	return retval;
 }
 
-void* mcheap_reallocate(void* section, size_t new_size)
+STATIC_IF_SANDBOXED void* mcheap_reallocate(void* section, size_t new_size)
 {
-	return reallocate(section, new_size);
+	void *retval;
+	mcheap_platform_lock();
+	retval = reallocate(section, new_size);
+	mcheap_platform_unlock();
+	return retval;
 }
 
-void* mcheap_free(void* section)
+STATIC_IF_SANDBOXED void* mcheap_free(void* section)
 {
-	return internal_free(section);
+	void *retval;
+	mcheap_platform_lock();
+	retval = internal_free(section);
+	mcheap_platform_unlock();
+	return retval;
 }
 
-size_t mcheap_largest_free(void)
+STATIC_IF_SANDBOXED size_t mcheap_largest_free(void)
 {
-	return free_find_largest();
+	size_t retval;
+	mcheap_platform_lock();
+	retval = free_find_largest();
+	mcheap_platform_unlock();
+	return retval;
 }
 
-bool mcheap_is_intact(void)
+STATIC_IF_SANDBOXED bool mcheap_is_intact(void)
 {
-	return heap_test();
+	bool retval;
+	mcheap_platform_lock();
+	retval = heap_test();
+	mcheap_platform_unlock();
 }
 
-void mcheap_reinit(void)
+STATIC_IF_SANDBOXED void mcheap_reinit(void)
 {
+	mcheap_platform_lock();
 	initialize();
+	mcheap_platform_unlock();
 }
 
 //********************************************************************************************************

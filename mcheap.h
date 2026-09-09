@@ -306,6 +306,7 @@ STATIC_IF_SANDBOXED bool mcheap_is_intact(void)
 	mcheap_platform_lock();
 	retval = heap_test();
 	mcheap_platform_unlock();
+	return retval;
 }
 
 STATIC_IF_SANDBOXED void mcheap_reinit(void)

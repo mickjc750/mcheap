@@ -48,26 +48,31 @@
 
 	static uint8_t buffers[ALLOCATION_COUNT][MCHEAP_SIZE];
 
-	void*	mcheap_defrag_allocate(size_t size) {return mcheap_allocate(size);}
-	void*	mcheap_defrag_reallocate(void* ptr, size_t size) {return mcheap_reallocate(ptr, size);}
-	void*	mcheap_defrag_free(void* ptr) {return mcheap_free(ptr);}
-	size_t  mcheap_defrag_largest_free(void) {return mcheap_largest_free();}
-	bool	mcheap_defrag_is_intact(void) {return mcheap_is_intact();}
-	void	mcheap_defrag_reinit(void) {return mcheap_reinit();}
+//********************************************************************************************************
+// External prototypes
+//********************************************************************************************************
+
+	void*	mcheap_defrag_allocate(size_t size);
+	void*	mcheap_defrag_reallocate(void* ptr, size_t size);
+	void*	mcheap_defrag_free(void* ptr);
+	size_t  mcheap_defrag_largest_free(void);
+	bool	mcheap_defrag_is_intact(void);
+	void	mcheap_defrag_reinit(void);
 	
-	void*	mcheap_evict_allocate(size_t size) {return mcheap_allocate(size);}
-	void*	mcheap_evict_reallocate(void* ptr, size_t size) {return mcheap_reallocate(ptr, size);}
-	void*	mcheap_evict_free(void* ptr) {return mcheap_free(ptr);}
-	size_t  mcheap_evict_largest_free(void) {return mcheap_largest_free();}
-	bool	mcheap_evict_is_intact(void) {return mcheap_is_intact();}
-	void	mcheap_evict_reinit(void) {return mcheap_reinit();}
-	
-	void*	mcheap_resize_allocate(size_t size) {return mcheap_allocate(size);}
-	void*	mcheap_resize_reallocate(void* ptr, size_t size) {return mcheap_reallocate(ptr, size);}
-	void*	mcheap_resize_free(void* ptr) {return mcheap_free(ptr);}
-	size_t  mcheap_resize_largest_free(void) {return mcheap_largest_free();}
-	bool	mcheap_resize_is_intact(void) {return mcheap_is_intact();}
-	void	mcheap_resize_reinit(void) {return mcheap_reinit();}
+	void*	mcheap_resize_allocate(size_t size);
+	void*	mcheap_resize_reallocate(void* ptr, size_t size);
+	void*	mcheap_resize_free(void* ptr);
+	size_t  mcheap_resize_largest_free(void);
+	bool	mcheap_resize_is_intact(void);
+	void	mcheap_resize_reinit(void);
+
+	void*	mcheap_evict_allocate(size_t size);
+	void*	mcheap_evict_reallocate(void* ptr, size_t size);
+	void*	mcheap_evict_free(void* ptr);
+	size_t  mcheap_evict_largest_free(void);
+	bool	mcheap_evict_is_intact(void);
+	void	mcheap_evict_reinit(void);
+
 
 //********************************************************************************************************
 // Private prototypes
@@ -127,16 +132,16 @@ SUITE(suite_other)
 
 TEST test_realloc_lower(void)
 {
-	mcheap_reinit();
-	char *a = mcheap_allocate(100);
-			  mcheap_allocate(20);
-	char *c = mcheap_allocate(20);
-	char *d = mcheap_allocate(100);
+	mcheap_defrag_reinit();
+	char *a = mcheap_defrag_allocate(100);
+			  mcheap_defrag_allocate(20);
+	char *c = mcheap_defrag_allocate(20);
+	char *d = mcheap_defrag_allocate(100);
 	clutter(d, 100);
 	memcpy(buffers[0], d, 100);
-	mcheap_free(a);
-	mcheap_free(c);
-	d = mcheap_reallocate(d, 100);	// should not extend down into c, should relocate to a 
+	mcheap_defrag_free(a);
+	mcheap_defrag_free(c);
+	d = mcheap_defrag_reallocate(d, 100);	// should not extend down into c, should relocate to a 
 	ASSERT_EQ(a, d);
 	ASSERT_MEM_EQ(buffers[0], d, 100);
 	PASS();
@@ -144,15 +149,15 @@ TEST test_realloc_lower(void)
 
 TEST test_realloc_shrink_in_place(void)
 {
-	mcheap_reinit();
-	char *a = mcheap_allocate(50);
-			  mcheap_allocate(20);
-	char *c = mcheap_allocate(100);
+	mcheap_defrag_reinit();
+	char *a = mcheap_defrag_allocate(50);
+			  mcheap_defrag_allocate(20);
+	char *c = mcheap_defrag_allocate(100);
 	char *d;
 	clutter(c, 80);
 	memcpy(buffers[0], c, 80);
-	mcheap_free(a);
-	d = mcheap_reallocate(c, 80);	// should not move, should shrink in place 
+	mcheap_defrag_free(a);
+	d = mcheap_defrag_reallocate(c, 80);	// should not move, should shrink in place 
 	ASSERT_EQ(d, c);
 	ASSERT_MEM_EQ(buffers[0], d, 80);
 	PASS();
@@ -160,14 +165,14 @@ TEST test_realloc_shrink_in_place(void)
 
 TEST test_realloc_ext_down(void)
 {
-	mcheap_reinit();
-			  mcheap_allocate(100);
-	char *c = mcheap_allocate(20);
-	char *d = mcheap_allocate(100);
+	mcheap_defrag_reinit();
+			  mcheap_defrag_allocate(100);
+	char *c = mcheap_defrag_allocate(20);
+	char *d = mcheap_defrag_allocate(100);
 	clutter(d, 100);
 	memcpy(buffers[0], d, 100);
-	mcheap_free(c);
-	d = mcheap_reallocate(d, 100);	// should not extend down into c, should relocate to a 
+	mcheap_defrag_free(c);
+	d = mcheap_defrag_reallocate(d, 100);	// should not extend down into c, should relocate to a 
 	ASSERT_EQ(d, c);
 	ASSERT_MEM_EQ(buffers[0], d, 100);
 	PASS();
@@ -175,12 +180,12 @@ TEST test_realloc_ext_down(void)
 
 TEST test_realloc_ext_up(void)
 {
-	mcheap_reinit();
-	char *a = mcheap_allocate(100);
+	mcheap_defrag_reinit();
+	char *a = mcheap_defrag_allocate(100);
 	char *b;
 	clutter(a, 100);
 	memcpy(buffers[0], a, 100);
-	b = mcheap_reallocate(a, 200);	// should extend up
+	b = mcheap_defrag_reallocate(a, 200);	// should extend up
 	ASSERT_EQ(b, a);
 	ASSERT_MEM_EQ(buffers[0], b, 100);
 	PASS();
@@ -188,15 +193,15 @@ TEST test_realloc_ext_up(void)
 
 TEST test_realloc_higher(void)
 {
-	mcheap_reinit();
-			  mcheap_allocate(100);
-	char *c = mcheap_allocate(20);
-			  mcheap_allocate(100);
-	char *d = mcheap_allocate(100);
-	mcheap_free(d);
+	mcheap_defrag_reinit();
+			  mcheap_defrag_allocate(100);
+	char *c = mcheap_defrag_allocate(20);
+			  mcheap_defrag_allocate(100);
+	char *d = mcheap_defrag_allocate(100);
+	mcheap_defrag_free(d);
 	clutter(c, 20);
 	memcpy(buffers[0], c, 20);
-	c = mcheap_reallocate(c, 50);	// should move to where d was
+	c = mcheap_defrag_reallocate(c, 50);	// should move to where d was
 	ASSERT_EQ(c, d);
 	ASSERT_MEM_EQ(buffers[0], c, 20);
 	PASS();
@@ -204,53 +209,53 @@ TEST test_realloc_higher(void)
 
 TEST test_alloc_fail(void)
 {
-	mcheap_reinit();
-	char *a = mcheap_allocate(MCHEAP_SIZE/2);
+	mcheap_defrag_reinit();
+	char *a = mcheap_defrag_allocate(MCHEAP_SIZE/2);
 	ASSERT(a);
-	a = mcheap_allocate(MCHEAP_SIZE/2);	//overhead should cause this to fail
+	a = mcheap_defrag_allocate(MCHEAP_SIZE/2);	//overhead should cause this to fail
 	ASSERT_EQ(a, NULL);
 	PASS();
 }
 
 TEST test_max_free(void)
 {
-	mcheap_reinit();
-	mcheap_allocate(1000);
-	char *a = mcheap_allocate(1000);
-	char *b = mcheap_allocate(1000);
-	mcheap_allocate(MCHEAP_SIZE-4000);
+	mcheap_defrag_reinit();
+	mcheap_defrag_allocate(1000);
+	char *a = mcheap_defrag_allocate(1000);
+	char *b = mcheap_defrag_allocate(1000);
+	mcheap_defrag_allocate(MCHEAP_SIZE-4000);
 	ASSERT(a);
 	ASSERT(b);
-	ASSERT(mcheap_largest_free() < 1000);	// top of heap should have just under 1000 due to overhead
-	mcheap_free(a);
-	ASSERT(1000 <= mcheap_largest_free() &&  mcheap_largest_free() < 1016);	// should now of 1000 where 'a' was
-	mcheap_free(b);
-	ASSERT(mcheap_largest_free() > 2000);	// should now have just over 2000 due to overhead
+	ASSERT(mcheap_defrag_largest_free() < 1000);	// top of heap should have just under 1000 due to overhead
+	mcheap_defrag_free(a);
+	ASSERT(1000 <= mcheap_defrag_largest_free() &&  mcheap_defrag_largest_free() < 1016);	// should now of 1000 where 'a' was
+	mcheap_defrag_free(b);
+	ASSERT(mcheap_defrag_largest_free() > 2000);	// should now have just over 2000 due to overhead
 
-	a = mcheap_allocate(mcheap_largest_free());	// allocate just over 2000
-	a = mcheap_allocate(mcheap_largest_free());	// allocate just under 1000, this should fill the heap
-	ASSERT_EQ(mcheap_largest_free(), 0);
+	a = mcheap_defrag_allocate(mcheap_defrag_largest_free());	// allocate just over 2000
+	a = mcheap_defrag_allocate(mcheap_defrag_largest_free());	// allocate just under 1000, this should fill the heap
+	ASSERT_EQ(mcheap_defrag_largest_free(), 0);
 	PASS();
 }
 
 TEST test_intact(void)
 {
-	mcheap_reinit();
-  				mcheap_allocate(100);
-	char *c = 	mcheap_allocate(20);
-				mcheap_allocate(100);
-	ASSERT(mcheap_is_intact());
+	mcheap_defrag_reinit();
+  				mcheap_defrag_allocate(100);
+	char *c = 	mcheap_defrag_allocate(20);
+				mcheap_defrag_allocate(100);
+	ASSERT(mcheap_defrag_is_intact());
 	memset(c-16,0xFF, 16);	//break it
-	ASSERT(!mcheap_is_intact());
+	ASSERT(!mcheap_defrag_is_intact());
 
-	mcheap_reinit();
-  			mcheap_allocate(100);
-	c = 	mcheap_allocate(20);
-			mcheap_allocate(100);
-	mcheap_free(c);
-	ASSERT(mcheap_is_intact());
+	mcheap_defrag_reinit();
+  			mcheap_defrag_allocate(100);
+	c = 	mcheap_defrag_allocate(20);
+			mcheap_defrag_allocate(100);
+	mcheap_defrag_free(c);
+	ASSERT(mcheap_defrag_is_intact());
 	memset(c-16,0xFF, 16);	//break it
-	ASSERT(!mcheap_is_intact());
+	ASSERT(!mcheap_defrag_is_intact());
 
 	PASS();
 }
@@ -262,7 +267,7 @@ TEST test_random(void)
 	int i;
 	int err;
 	uint32_t count = RANDOM_OP_COUNT;
-	mcheap_reinit();
+	mcheap_defrag_reinit();
 	printf("Testing random heap activity with %"PRIu32" operations\n", count);
 	while(count--)
 	{
@@ -272,7 +277,7 @@ TEST test_random(void)
 		{
 			if(rand() % 2)
 			{
-				ptrs[i] = mcheap_free(ptrs[i]);
+				ptrs[i] = mcheap_defrag_free(ptrs[i]);
 				count_free++;
 			}
 			else
@@ -287,7 +292,7 @@ TEST test_random(void)
 			sizes[i] = choose_allocation_size();
 			if(sizes[i])
 			{
-				ptrs[i] = mcheap_allocate(sizes[i]);
+				ptrs[i] = mcheap_defrag_allocate(sizes[i]);
 				clutter(ptrs[i], sizes[i]);
 				memcpy(buffers[i], ptrs[i], sizes[i]);
 				count_allocate++;
@@ -304,11 +309,11 @@ TEST test_random(void)
 		};
 
 		// check heap integrity
-		ASSERT(mcheap_is_intact());
+		ASSERT(mcheap_defrag_is_intact());
 		if((count & 0x0000FFFF) == 0)
 			printf("allocate=%"PRIu32", free=%"PRIu32", realloc_bigger=%"PRIu32", realloc_same=%"PRIu32", realloc_smaller=%"PRIu32", total=%"PRIu32"\n", count_allocate, count_free, count_realloc_bigger, count_realloc_same, count_realloc_smaller, count_allocate+count_free+count_realloc_bigger+count_realloc_same+count_realloc_smaller);
 	};
-	mcheap_reinit();
+	mcheap_defrag_reinit();
 	PASS();
 }
 
@@ -321,7 +326,7 @@ static int random_realloc(char **ptr_ptr, int *size_ptr, uint8_t buf[MCHEAP_SIZE
 
 	if(new_size >= old_size)
 	{
-		ptr = mcheap_reallocate(ptr, new_size);			// potentially increase allocation size
+		ptr = mcheap_defrag_reallocate(ptr, new_size);			// potentially increase allocation size
 		if(memcmp(buf, ptr, old_size))					// check content was not destroyed on size increase
 			retval = ERR_REALLOC_BROKE_ON_INCREASE;
 		clutter(ptr, new_size);							// create new content
@@ -334,7 +339,7 @@ static int random_realloc(char **ptr_ptr, int *size_ptr, uint8_t buf[MCHEAP_SIZE
 	else
 	{
 		memcpy(buf, ptr, new_size);							// update buffer with smaller content
-		ptr = mcheap_reallocate(ptr, new_size);				// decrease allocation size
+		ptr = mcheap_defrag_reallocate(ptr, new_size);				// decrease allocation size
 		if(memcmp(buf, ptr, new_size))						// check remaining content was not destroyed
 			retval = ERR_REALLOC_BROKE_ON_DECREASE;
 		count_realloc_smaller++;
@@ -354,7 +359,7 @@ static void clutter(char* dst, size_t sz)
 int choose_allocation_size(void)
 {
 	int retval = 0;	
-	size_t lf = mcheap_largest_free();
+	size_t lf = mcheap_defrag_largest_free();
 
 	if(lf == 1)
 		retval = 1;

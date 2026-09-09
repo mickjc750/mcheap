@@ -48,6 +48,27 @@
 
 	static uint8_t buffers[ALLOCATION_COUNT][MCHEAP_SIZE];
 
+	void*	mcheap_defrag_allocate(size_t size) {return mcheap_allocate(size);}
+	void*	mcheap_defrag_reallocate(void* ptr, size_t size) {return mcheap_reallocate(ptr, size);}
+	void*	mcheap_defrag_free(void* ptr) {return mcheap_free(ptr);}
+	size_t  mcheap_defrag_largest_free(void) {return mcheap_largest_free();}
+	bool	mcheap_defrag_is_intact(void) {return mcheap_is_intact();}
+	void	mcheap_defrag_reinit(void) {return mcheap_reinit();}
+	
+	void*	mcheap_evict_allocate(size_t size) {return mcheap_allocate(size);}
+	void*	mcheap_evict_reallocate(void* ptr, size_t size) {return mcheap_reallocate(ptr, size);}
+	void*	mcheap_evict_free(void* ptr) {return mcheap_free(ptr);}
+	size_t  mcheap_evict_largest_free(void) {return mcheap_largest_free();}
+	bool	mcheap_evict_is_intact(void) {return mcheap_is_intact();}
+	void	mcheap_evict_reinit(void) {return mcheap_reinit();}
+	
+	void*	mcheap_resize_allocate(size_t size) {return mcheap_allocate(size);}
+	void*	mcheap_resize_reallocate(void* ptr, size_t size) {return mcheap_reallocate(ptr, size);}
+	void*	mcheap_resize_free(void* ptr) {return mcheap_free(ptr);}
+	size_t  mcheap_resize_largest_free(void) {return mcheap_largest_free();}
+	bool	mcheap_resize_is_intact(void) {return mcheap_is_intact();}
+	void	mcheap_resize_reinit(void) {return mcheap_reinit();}
+
 //********************************************************************************************************
 // Private prototypes
 //********************************************************************************************************

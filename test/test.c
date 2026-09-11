@@ -46,7 +46,7 @@
 	static uint32_t count_allocate = 0;
 	static uint32_t count_free = 0;
 
-	static uint8_t buffers[ALLOCATION_COUNT][MCHEAP_SIZE];
+	static uint8_t defrag_buffers[ALLOCATION_COUNT][MCHEAP_SIZE];
 
 //********************************************************************************************************
 // External prototypes
@@ -78,18 +78,16 @@
 // Private prototypes
 //********************************************************************************************************
 
-	SUITE(suite_realloc);
-	TEST test_realloc_lower(void);
-	TEST test_realloc_shrink_in_place(void);
-	TEST test_realloc_ext_down(void);
-	TEST test_realloc_ext_up(void);
-	TEST test_realloc_higher(void);
-
-	SUITE(suite_other);
-	TEST test_alloc_fail(void);
-	TEST test_max_free(void);
-	TEST test_intact(void);
-	TEST test_random(void);
+	SUITE(suite_defrag);
+	TEST test_defrag_realloc_lower(void);
+	TEST test_defrag_realloc_shrink_in_place(void);
+	TEST test_defrag_realloc_ext_down(void);
+	TEST test_defrag_realloc_ext_up(void);
+	TEST test_defrag_realloc_higher(void);
+	TEST test_defrag_alloc_fail(void);
+	TEST test_defrag_max_free(void);
+	TEST test_defrag_intact(void);
+	TEST test_defrag_random(void);
 
 	static int random_realloc(char **ptr_ptr, int *size_ptr, uint8_t buf[MCHEAP_SIZE]);
 	static void clutter(char* dst, size_t sz);
@@ -102,8 +100,7 @@
 int main(int argc, const char* argv[])
 {
 	GREATEST_MAIN_BEGIN();
-	RUN_SUITE(suite_realloc);
-	RUN_SUITE(suite_other);
+	RUN_SUITE(suite_defrag);
 	GREATEST_MAIN_END();
 
 	return 0;
@@ -113,24 +110,20 @@ int main(int argc, const char* argv[])
 // Private functions
 //********************************************************************************************************
 
-SUITE(suite_realloc)
+SUITE(suite_defrag)
 {
-	RUN_TEST(test_realloc_lower);
-	RUN_TEST(test_realloc_shrink_in_place);
-	RUN_TEST(test_realloc_ext_down);
-	RUN_TEST(test_realloc_ext_up);
-	RUN_TEST(test_realloc_higher);
+	RUN_TEST(test_defrag_realloc_lower);
+	RUN_TEST(test_defrag_realloc_shrink_in_place);
+	RUN_TEST(test_defrag_realloc_ext_down);
+	RUN_TEST(test_defrag_realloc_ext_up);
+	RUN_TEST(test_defrag_realloc_higher);
+	RUN_TEST(test_defrag_alloc_fail);
+	RUN_TEST(test_defrag_max_free);
+	RUN_TEST(test_defrag_intact);
+	RUN_TEST(test_defrag_random);
 }
 
-SUITE(suite_other)
-{
-	RUN_TEST(test_alloc_fail);
-	RUN_TEST(test_max_free);
-	RUN_TEST(test_intact);
-	RUN_TEST(test_random);
-}
-
-TEST test_realloc_lower(void)
+TEST test_defrag_realloc_lower(void)
 {
 	mcheap_defrag_reinit();
 	char *a = mcheap_defrag_allocate(100);
@@ -138,16 +131,16 @@ TEST test_realloc_lower(void)
 	char *c = mcheap_defrag_allocate(20);
 	char *d = mcheap_defrag_allocate(100);
 	clutter(d, 100);
-	memcpy(buffers[0], d, 100);
+	memcpy(defrag_buffers[0], d, 100);
 	mcheap_defrag_free(a);
 	mcheap_defrag_free(c);
 	d = mcheap_defrag_reallocate(d, 100);	// should not extend down into c, should relocate to a 
 	ASSERT_EQ(a, d);
-	ASSERT_MEM_EQ(buffers[0], d, 100);
+	ASSERT_MEM_EQ(defrag_buffers[0], d, 100);
 	PASS();
 }
 
-TEST test_realloc_shrink_in_place(void)
+TEST test_defrag_realloc_shrink_in_place(void)
 {
 	mcheap_defrag_reinit();
 	char *a = mcheap_defrag_allocate(50);
@@ -155,43 +148,43 @@ TEST test_realloc_shrink_in_place(void)
 	char *c = mcheap_defrag_allocate(100);
 	char *d;
 	clutter(c, 80);
-	memcpy(buffers[0], c, 80);
+	memcpy(defrag_buffers[0], c, 80);
 	mcheap_defrag_free(a);
 	d = mcheap_defrag_reallocate(c, 80);	// should not move, should shrink in place 
 	ASSERT_EQ(d, c);
-	ASSERT_MEM_EQ(buffers[0], d, 80);
+	ASSERT_MEM_EQ(defrag_buffers[0], d, 80);
 	PASS();
 }
 
-TEST test_realloc_ext_down(void)
+TEST test_defrag_realloc_ext_down(void)
 {
 	mcheap_defrag_reinit();
 			  mcheap_defrag_allocate(100);
 	char *c = mcheap_defrag_allocate(20);
 	char *d = mcheap_defrag_allocate(100);
 	clutter(d, 100);
-	memcpy(buffers[0], d, 100);
+	memcpy(defrag_buffers[0], d, 100);
 	mcheap_defrag_free(c);
 	d = mcheap_defrag_reallocate(d, 100);	// should not extend down into c, should relocate to a 
 	ASSERT_EQ(d, c);
-	ASSERT_MEM_EQ(buffers[0], d, 100);
+	ASSERT_MEM_EQ(defrag_buffers[0], d, 100);
 	PASS();
 }
 
-TEST test_realloc_ext_up(void)
+TEST test_defrag_realloc_ext_up(void)
 {
 	mcheap_defrag_reinit();
 	char *a = mcheap_defrag_allocate(100);
 	char *b;
 	clutter(a, 100);
-	memcpy(buffers[0], a, 100);
+	memcpy(defrag_buffers[0], a, 100);
 	b = mcheap_defrag_reallocate(a, 200);	// should extend up
 	ASSERT_EQ(b, a);
-	ASSERT_MEM_EQ(buffers[0], b, 100);
+	ASSERT_MEM_EQ(defrag_buffers[0], b, 100);
 	PASS();
 }
 
-TEST test_realloc_higher(void)
+TEST test_defrag_realloc_higher(void)
 {
 	mcheap_defrag_reinit();
 			  mcheap_defrag_allocate(100);
@@ -200,14 +193,14 @@ TEST test_realloc_higher(void)
 	char *d = mcheap_defrag_allocate(100);
 	mcheap_defrag_free(d);
 	clutter(c, 20);
-	memcpy(buffers[0], c, 20);
+	memcpy(defrag_buffers[0], c, 20);
 	c = mcheap_defrag_reallocate(c, 50);	// should move to where d was
 	ASSERT_EQ(c, d);
-	ASSERT_MEM_EQ(buffers[0], c, 20);
+	ASSERT_MEM_EQ(defrag_buffers[0], c, 20);
 	PASS();
 }
 
-TEST test_alloc_fail(void)
+TEST test_defrag_alloc_fail(void)
 {
 	mcheap_defrag_reinit();
 	char *a = mcheap_defrag_allocate(MCHEAP_SIZE/2);
@@ -217,7 +210,7 @@ TEST test_alloc_fail(void)
 	PASS();
 }
 
-TEST test_max_free(void)
+TEST test_defrag_max_free(void)
 {
 	mcheap_defrag_reinit();
 	mcheap_defrag_allocate(1000);
@@ -238,7 +231,7 @@ TEST test_max_free(void)
 	PASS();
 }
 
-TEST test_intact(void)
+TEST test_defrag_intact(void)
 {
 	mcheap_defrag_reinit();
   				mcheap_defrag_allocate(100);
@@ -260,7 +253,7 @@ TEST test_intact(void)
 	PASS();
 }
 
-TEST test_random(void)
+TEST test_defrag_random(void)
 {
 	char* ptrs[ALLOCATION_COUNT] = {0};
 	int sizes[ALLOCATION_COUNT];
@@ -282,7 +275,7 @@ TEST test_random(void)
 			}
 			else
 			{
-				err = random_realloc(&ptrs[i], &sizes[i], buffers[i]);
+				err = random_realloc(&ptrs[i], &sizes[i], defrag_buffers[i]);
 				ASSERT_NEQ(ERR_REALLOC_BROKE_ON_DECREASE, err);
 				ASSERT_NEQ(ERR_REALLOC_BROKE_ON_INCREASE, err);
 			};
@@ -294,7 +287,7 @@ TEST test_random(void)
 			{
 				ptrs[i] = mcheap_defrag_allocate(sizes[i]);
 				clutter(ptrs[i], sizes[i]);
-				memcpy(buffers[i], ptrs[i], sizes[i]);
+				memcpy(defrag_buffers[i], ptrs[i], sizes[i]);
 				count_allocate++;
 			};
 		};
@@ -304,7 +297,7 @@ TEST test_random(void)
 		while(i != ALLOCATION_COUNT)
 		{
 			if(ptrs[i])
-				ASSERT_MEM_EQ(buffers[i], ptrs[i], sizes[i]);
+				ASSERT_MEM_EQ(defrag_buffers[i], ptrs[i], sizes[i]);
 			i++;
 		};
 

@@ -91,7 +91,7 @@
 
 	static int random_realloc(char **ptr_ptr, size_t *size_ptr, uint8_t buf[MCHEAP_SIZE]);
 	static void clutter(char* dst, size_t sz);
-	size_t choose_allocation_size(size_t largest_free);
+	static size_t choose_allocation_size(size_t largest_free);
 	static size_t random_size(void);
 
 //********************************************************************************************************
@@ -350,7 +350,7 @@ static void clutter(char* dst, size_t sz)
 		*dst++ = (char)rand();
 }
 
-size_t choose_allocation_size(size_t largest_free)
+static size_t choose_allocation_size(size_t largest_free)
 {
 	return largest_free == SIZE_MAX ? random_size():(random_size() % (largest_free + 1));
 }
@@ -363,7 +363,7 @@ static size_t random_size(void)
     {
         value <<= 1;
         value |= (size_t)(rand() > RAND_MAX / 2);
-    }
+    };
 
     return value;
 }

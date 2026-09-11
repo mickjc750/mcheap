@@ -91,7 +91,7 @@
 
 	static int random_realloc(char **ptr_ptr, int *size_ptr, uint8_t buf[MCHEAP_SIZE]);
 	static void clutter(char* dst, size_t sz);
-	int choose_allocation_size(void);
+	int choose_allocation_size(size_t largest_free);
 
 //********************************************************************************************************
 // Public functions
@@ -282,7 +282,7 @@ TEST test_defrag_random(void)
 		}
 		else
 		{
-			sizes[i] = choose_allocation_size();
+			sizes[i] = choose_allocation_size(mcheap_defrag_largest_free());
 			if(sizes[i])
 			{
 				ptrs[i] = mcheap_defrag_allocate(sizes[i]);
@@ -314,7 +314,7 @@ static int random_realloc(char **ptr_ptr, int *size_ptr, uint8_t buf[MCHEAP_SIZE
 {
 	char *ptr = *ptr_ptr;
 	int old_size = *size_ptr;
-	int new_size = choose_allocation_size();
+	int new_size = choose_allocation_size(mcheap_defrag_largest_free());
 	int retval = 0;
 
 	if(new_size >= old_size)
@@ -349,14 +349,13 @@ static void clutter(char* dst, size_t sz)
 		*dst++ = (char)rand();
 }
 
-int choose_allocation_size(void)
+int choose_allocation_size(size_t largest_free)
 {
 	int retval = 0;	
-	size_t lf = mcheap_defrag_largest_free();
 
-	if(lf == 1)
+	if(largest_free == 1)
 		retval = 1;
-	else if(lf > 1)
-		retval = rand()%((int)(lf-1));
+	else if(largest_free > 1)
+		retval = rand()%((int)(largest_free-1));
 	return retval;
 }

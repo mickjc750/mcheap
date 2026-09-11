@@ -89,7 +89,8 @@
 	TEST test_defrag_intact(void);
 	TEST test_defrag_random(void);
 
-	static int random_realloc(char **ptr_ptr, size_t *size_ptr, uint8_t buf[MCHEAP_SIZE]);
+	static int random_realloc(char **ptr_ptr, size_t *size_ptr, uint8_t buf[MCHEAP_SIZE], size_t new_size, void* (*realloc_func)(void*,size_t) );
+
 	static void clutter(char* dst, size_t sz);
 	static size_t choose_allocation_size(size_t largest_free);
 	static size_t random_size(void);
@@ -258,6 +259,7 @@ TEST test_defrag_random(void)
 {
 	char* ptrs[ALLOCATION_COUNT] = {0};
 	size_t sizes[ALLOCATION_COUNT];
+	size_t new_size;
 	int i;
 	int err;
 	uint32_t count = RANDOM_OP_COUNT;
@@ -276,7 +278,8 @@ TEST test_defrag_random(void)
 			}
 			else
 			{
-				err = random_realloc(&ptrs[i], &sizes[i], defrag_buffers[i]);
+				new_size = choose_allocation_size(mcheap_defrag_largest_free());
+				err = random_realloc(&ptrs[i], &sizes[i], defrag_buffers[i], new_size, &mcheap_defrag_reallocate);
 				ASSERT_NEQ(ERR_REALLOC_BROKE_ON_DECREASE, err);
 				ASSERT_NEQ(ERR_REALLOC_BROKE_ON_INCREASE, err);
 			};
@@ -311,16 +314,16 @@ TEST test_defrag_random(void)
 	PASS();
 }
 
-static int random_realloc(char **ptr_ptr, size_t *size_ptr, uint8_t buf[MCHEAP_SIZE])
+
+static int random_realloc(char **ptr_ptr, size_t *size_ptr, uint8_t buf[MCHEAP_SIZE], size_t new_size, void* (*realloc_func)(void*,size_t) )
 {
 	char *ptr = *ptr_ptr;
 	size_t old_size = *size_ptr;
-	size_t new_size = choose_allocation_size(mcheap_defrag_largest_free());
 	int retval = 0;
 
 	if(new_size >= old_size)
 	{
-		ptr = mcheap_defrag_reallocate(ptr, new_size);	// potentially increase allocation size
+		ptr = realloc_func(ptr, new_size);				// potentially increase allocation size
 		if(memcmp(buf, ptr, old_size))					// check content was not destroyed on size increase
 			retval = ERR_REALLOC_BROKE_ON_INCREASE;
 		clutter(ptr, new_size);							// create new content
@@ -333,7 +336,7 @@ static int random_realloc(char **ptr_ptr, size_t *size_ptr, uint8_t buf[MCHEAP_S
 	else
 	{
 		memcpy(buf, ptr, new_size);							// update buffer with smaller content
-		ptr = mcheap_defrag_reallocate(ptr, new_size);		// decrease allocation size
+		ptr = realloc_func(ptr, new_size);					// decrease allocation size
 		if(memcmp(buf, ptr, new_size))						// check remaining content was not destroyed
 			retval = ERR_REALLOC_BROKE_ON_DECREASE;
 		count_realloc_smaller++;

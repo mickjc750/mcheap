@@ -418,7 +418,6 @@ static void* reallocate(void* section, size_t new_size)
 #ifdef MCHEAP_REALLOC_POLICY_EVICT
 static void* reallocate(void* section, size_t new_size)
 {
-	struct free_struct* free_ptr;
 	struct free_struct* relocation_ptr;
 	struct used_struct* used_ptr;
 	struct used_struct* new_used_ptr = NULL;
@@ -439,13 +438,9 @@ static void* reallocate(void* section, size_t new_size)
 		// find space for new allocation
 		relocation_ptr = free_walk(new_size);
 
-		// relocate to a lower address? (1st preference to minimize fragmentation)
 		if(relocation_ptr)
-			new_used_ptr = relocate(relocation_ptr, used_ptr, new_size);
-
-		// Shrink the new used section if possible
-		if(new_used_ptr)
 		{
+			new_used_ptr = relocate(relocation_ptr, used_ptr, new_size);
 			used_shrink(new_used_ptr, new_size);
 			retval = new_used_ptr->content;
 		};

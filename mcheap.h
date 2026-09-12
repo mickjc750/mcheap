@@ -9,6 +9,7 @@ Configuration
 
 MCHEAP_SIZE
  	The heap size in bytes. If this is not defined the default value of 1024 will be used.
+	This value must be a multiple of MCHEAP_ALIGNMENT.
 
 MCHEAP_ALIGNMENT
 	Ensure all allocations are aligned to the specified byte boundary.
@@ -33,7 +34,20 @@ Then ONE of:
 		This behaves like regular realloc(), and will attempt to avoid copying the allocations content.
 		If the allocation can be extended in place, it will be.
 		This improves allcoator performance by avoiding the data copy when possible.
-	
+
+MCHEAP_SANDBOX
+	This makes the API static, restricting it to the implementation.
+	This allows creating multiple implementations of the allocator in a single build.
+	An example of this can be seen in the test, which uses this to test all configurations of MCHEAP_REALLOC_POLICY_xxx
+
+
+Thread safety
+*************
+
+The following two macros may be defined to provide locking if needed, if not provided these default to ((void)0).
+	#define mcheap_platform_lock()
+	#define mcheap_platform_unlock()
+
 */
 
 #ifndef _MCHEAP_H_

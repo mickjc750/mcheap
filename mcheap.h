@@ -116,6 +116,12 @@ MCHEAP_ADDRESS
 		#define mcheap_platform_unlock() ((void)0)
 	#endif
 	
+	#if !defined(MCHEAP_REALLOC_POLICY_DEFRAG) && !defined(MCHEAP_REALLOC_POLICY_EVICT) && !defined(MCHEAP_REALLOC_POLICY_RESIZE)
+		#warning "mcheap is using default reallocate policy of MCHEAP_REALLOC_POLICY_DEFRAG. \
+		define one of MCHEAP_REALLOC_POLICY_DEFRAG, MCHEAP_REALLOC_POLICY_EVICT, MCHEAP_REALLOC_POLICY_RESIZE to avoid this warning."
+		#define MCHEAP_REALLOC_POLICY_DEFRAG
+	#endif
+
 	struct free_struct
 	{
 		size_t				size;		// size of empty content[] following this structure &content[size] will address the next used_struct/free_struct

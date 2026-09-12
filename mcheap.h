@@ -357,7 +357,7 @@ static void* allocate(size_t size)
 	return retval;
 }
 
-#ifdef MCHEAP_REALLOCATE_POLICY_DEFRAG
+#ifdef MCHEAP_REALLOC_POLICY_DEFRAG
 static void* reallocate(void* section, size_t new_size)
 {
 	struct free_struct* free_ptr;
@@ -415,7 +415,7 @@ static void* reallocate(void* section, size_t new_size)
 }
 #endif
 
-#ifdef MCHEAP_REALLOCATE_POLICY_EVICT
+#ifdef MCHEAP_REALLOC_POLICY_EVICT
 static void* reallocate(void* section, size_t new_size)
 {
 	struct free_struct* free_ptr;
@@ -473,7 +473,7 @@ static void* reallocate(void* section, size_t new_size)
 }
 #endif
 
-#ifdef MCHEAP_REALLOCATE_POLICY_RESIZE
+#ifdef MCHEAP_REALLOC_POLICY_RESIZE
 static void* reallocate(void* section, size_t new_size)
 {
 	struct free_struct* free_ptr;

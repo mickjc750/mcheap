@@ -18,7 +18,7 @@
 //********************************************************************************************************
 
 	#define ALLOCATION_COUNT 8
-	#define RANDOM_OP_COUNT 1000000
+	#define RANDOM_OP_COUNT 10000000
 
 //********************************************************************************************************
 // Local defines
@@ -59,19 +59,19 @@
 	bool	mcheap_defrag_is_intact(void);
 	void	mcheap_defrag_reinit(void);
 	
-	void*	mcheap_resize_allocate(size_t size);
-	void*	mcheap_resize_reallocate(void* ptr, size_t size);
-	void*	mcheap_resize_free(void* ptr);
-	size_t  mcheap_resize_largest_free(void);
-	bool	mcheap_resize_is_intact(void);
-	void	mcheap_resize_reinit(void);
-
 	void*	mcheap_evict_allocate(size_t size);
 	void*	mcheap_evict_reallocate(void* ptr, size_t size);
 	void*	mcheap_evict_free(void* ptr);
 	size_t  mcheap_evict_largest_free(void);
 	bool	mcheap_evict_is_intact(void);
 	void	mcheap_evict_reinit(void);
+
+	void*	mcheap_resize_allocate(size_t size);
+	void*	mcheap_resize_reallocate(void* ptr, size_t size);
+	void*	mcheap_resize_free(void* ptr);
+	size_t  mcheap_resize_largest_free(void);
+	bool	mcheap_resize_is_intact(void);
+	void	mcheap_resize_reinit(void);
 
 
 //********************************************************************************************************
@@ -101,9 +101,9 @@
 	TEST test_evict_random(void);
 
 	SUITE(suite_resize);
-	TEST test_resize_realloc_lower(void);
+	TEST test_resize_realloc_dont_lower(void);
 	TEST test_resize_realloc_shrink_in_place(void);
-	TEST test_resize_realloc_ext_down(void);
+	TEST test_resize_realloc_dont_ext_down(void);
 	TEST test_resize_realloc_ext_up(void);
 	TEST test_resize_realloc_higher(void);
 	TEST test_resize_alloc_fail(void);
@@ -163,9 +163,9 @@ SUITE(suite_evict)
 
 SUITE(suite_resize)
 {
-	RUN_TEST(test_resize_realloc_lower);
+	RUN_TEST(test_resize_realloc_dont_lower);
 	RUN_TEST(test_resize_realloc_shrink_in_place);
-	RUN_TEST(test_resize_realloc_ext_down);
+	RUN_TEST(test_resize_realloc_dont_ext_down);
 	RUN_TEST(test_resize_realloc_ext_up);
 	RUN_TEST(test_resize_realloc_higher);
 	RUN_TEST(test_resize_alloc_fail);
@@ -586,7 +586,7 @@ TEST test_evict_random(void)
 // Tests - resize
 //********************************************************************************************************
 
-TEST test_resize_realloc_lower(void)
+TEST test_resize_realloc_dont_lower(void)
 {
 	mcheap_resize_reinit();
 	char *a = mcheap_resize_allocate(100);
@@ -597,8 +597,8 @@ TEST test_resize_realloc_lower(void)
 	memcpy(resize_buffers[0], d, 100);
 	mcheap_resize_free(a);
 	mcheap_resize_free(c);
-	d = mcheap_resize_reallocate(d, 100);	// should not extend down into c, should relocate to a 
-	ASSERT_EQ(a, d);
+	d = mcheap_resize_reallocate(d, 100);	// should extend down into c
+	ASSERT_NEQ(a, d);
 	ASSERT_MEM_EQ(resize_buffers[0], d, 100);
 	PASS();
 }
@@ -619,7 +619,7 @@ TEST test_resize_realloc_shrink_in_place(void)
 	PASS();
 }
 
-TEST test_resize_realloc_ext_down(void)
+TEST test_resize_realloc_dont_ext_down(void)
 {
 	mcheap_resize_reinit();
 			  mcheap_resize_allocate(100);
@@ -628,8 +628,8 @@ TEST test_resize_realloc_ext_down(void)
 	clutter(d, 100);
 	memcpy(resize_buffers[0], d, 100);
 	mcheap_resize_free(c);
-	d = mcheap_resize_reallocate(d, 100);	// should not extend down into c, should relocate to a 
-	ASSERT_EQ(d, c);
+	d = mcheap_resize_reallocate(d, 100);	// should not extend down into c
+	ASSERT_NEQ(d, c);
 	ASSERT_MEM_EQ(resize_buffers[0], d, 100);
 	PASS();
 }

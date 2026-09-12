@@ -440,27 +440,8 @@ static void* reallocate(void* section, size_t new_size)
 		relocation_ptr = free_walk(new_size);
 
 		// relocate to a lower address? (1st preference to minimize fragmentation)
-		if(relocation_ptr && (void*)relocation_ptr < (void*)used_ptr)
+		if(relocation_ptr)
 			new_used_ptr = relocate(relocation_ptr, used_ptr, new_size);
-
-		else
-		{
-			free_ptr = find_free_below(used_ptr); 
-			if(used_section_can_extend_down(free_ptr, used_ptr, new_size)) // 2nd preference
-			{
-				free_remove(free_ptr);
-				new_used_ptr = used_extend_down(free_ptr, used_ptr, new_size);
-			}
-			else if(new_size <= used_ptr->size)	//shrink in place? 3rd preference
-				new_used_ptr = used_ptr;
-			else if(used_section_can_extend_up(used_ptr, new_size))	//4th preference
-			{
-				free_remove(SECTION_AFTER(used_ptr));
-				new_used_ptr = used_extend_up(used_ptr);
-			}
-			else if(relocation_ptr)
-				new_used_ptr = relocate(relocation_ptr, used_ptr, new_size);	// 5th preference, relocate to higher address
-		};
 
 		// Shrink the new used section if possible
 		if(new_used_ptr)

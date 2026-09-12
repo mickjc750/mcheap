@@ -19,6 +19,21 @@ MCHEAP_ADDRESS
  	If this is not defined, the heap space will simply be a static uint8_t[] within the BSS section.
  	**CAUTION** If this is used, the address provided MUST respect the MCHEAP_ALIGNMENT provided, or an alignment of __BIGGEST_ALIGNMENT__
 
+Then ONE of:
+	MCHEAP_REALLOC_POLICY_DEFRAG
+		This reallocation policy will always try to relocate to a lower address.
+		This (on average) reduces fragmentation in the heap, which is beneficial to embedded platforms with limited ram.
+
+	MCHEAP_REALLOC_POLICY_EVICT
+		This option will always allocate-copy-free.
+		It reduces the build size by simplifiying the operation.
+		It also makes the performance more predictable, as a content copy happens on every reallocation.
+
+	MCHEAP_REALLOC_POLICY_RESIZE
+		This behaves like regular realloc(), and will attempt to avoid copying the allocations content.
+		If the allocation can be extended in place, it will be.
+		This improves allcoator performance by avoiding the data copy when possible.
+	
 */
 
 #ifndef _MCHEAP_H_
@@ -116,6 +131,12 @@ MCHEAP_ADDRESS
 		#define mcheap_platform_unlock() ((void)0)
 	#endif
 	
+	#if (defined(MCHEAP_REALLOC_POLICY_DEFRAG) + \
+     	defined(MCHEAP_REALLOC_POLICY_EVICT) + \
+     	defined(MCHEAP_REALLOC_POLICY_RESIZE)) > 1
+    #error "Only one MCHEAP_REALLOC_POLICY_xxx may be defined"
+	#endif
+
 	#if !defined(MCHEAP_REALLOC_POLICY_DEFRAG) && !defined(MCHEAP_REALLOC_POLICY_EVICT) && !defined(MCHEAP_REALLOC_POLICY_RESIZE)
 		#warning "mcheap is using default reallocate policy of MCHEAP_REALLOC_POLICY_DEFRAG. \
 		define one of MCHEAP_REALLOC_POLICY_DEFRAG, MCHEAP_REALLOC_POLICY_EVICT, MCHEAP_REALLOC_POLICY_RESIZE to avoid this warning."
@@ -198,7 +219,9 @@ MCHEAP_ADDRESS
 	static struct used_struct* relocate(struct free_struct* dest_ptr, struct used_struct* src_ptr, size_t new_size);
 
 // 	Return true if section is in the free list
+#ifndef MCHEAP_REALLOC_POLICY_EVICT
 	static bool in_free_list(struct free_struct *x);
+#endif
 
 // 	Shrink used section so that it's content is reduced to the new_size.
 // 	This will only happen if doing so allows a new free section to be created.
@@ -214,6 +237,7 @@ MCHEAP_ADDRESS
 // 	Returns the result
 	static struct used_struct* free_to_used(struct free_struct *free_ptr);
 
+#ifndef MCHEAP_REALLOC_POLICY_EVICT
 // 	Extend a used section into a lower free section, also moves content limited to 'preserve_size' bytes
 // 	Free section must be removed from the free list before calling this function
 // 	Returns the resulting used section
@@ -222,6 +246,7 @@ MCHEAP_ADDRESS
 // 	Extend a used section into a higher free section
 // 	The higher free section must be removed from the free list before calling this function
 	static struct used_struct* used_extend_up(struct used_struct *used_ptr);
+#endif
 
 // 	Find free below
 // 	Find the last free section before target section (either type), if there is one
@@ -260,11 +285,13 @@ MCHEAP_ADDRESS
 // Ensure that size is aligned, AND that the used section will be large enough to return to the free list
 	static size_t enforce_minimum_allocation_size(size_t sz);
 
+#ifndef MCHEAP_REALLOC_POLICY_EVICT
 // 	Return true, if the used section can extend down into the free section to acheive the desired size
 	static bool used_section_can_extend_down(struct free_struct* free_ptr, struct used_struct* used_ptr, size_t desired_size);
 
 // Return true, if the used section can extend up into a free section to acheive the desired size
 	static bool used_section_can_extend_up(struct used_struct* used_ptr, size_t desired_size);
+#endif
 
 //********************************************************************************************************
 // Public functions
@@ -596,6 +623,7 @@ static struct used_struct* free_to_used(struct free_struct *free_ptr)
 	return used_ptr;
 }
 
+#ifndef MCHEAP_REALLOC_POLICY_EVICT
 // Return true, if the used section can extend down into the free section to acheive the desired size
 static bool used_section_can_extend_down(struct free_struct* free_ptr, struct used_struct* used_ptr, size_t desired_size)
 {
@@ -653,6 +681,7 @@ static struct used_struct* used_extend_up(struct used_struct *used_ptr)
 
 	return used_ptr;
 }
+#endif
 
 // Find free below
 // Find the last free section before target section (either type), if there is one
@@ -685,6 +714,7 @@ static struct free_struct* free_walk(size_t size)
 	return free_ptr;
 }
 
+#ifndef MCHEAP_REALLOC_POLICY_EVICT
 // Return true if section is in the free list
 static bool in_free_list(struct free_struct *section)
 {
@@ -699,6 +729,7 @@ static bool in_free_list(struct free_struct *section)
 	};
 	return retval;
 }
+#endif
 
 // Insert a free section into the free list
 // Walks the free list to find the insertion point

@@ -87,6 +87,7 @@
 	TEST test_defrag_alloc_fail(void);
 	TEST test_defrag_max_free(void);
 	TEST test_defrag_intact(void);
+	TEST test_defrag_size_max_fails(void);
 	TEST test_defrag_random(void);
 
 	SUITE(suite_evict);
@@ -98,6 +99,7 @@
 	TEST test_evict_alloc_fail(void);
 	TEST test_evict_max_free(void);
 	TEST test_evict_intact(void);
+	TEST test_evict_size_max_fails(void);
 	TEST test_evict_random(void);
 
 	SUITE(suite_resize);
@@ -109,6 +111,7 @@
 	TEST test_resize_alloc_fail(void);
 	TEST test_resize_max_free(void);
 	TEST test_resize_intact(void);
+	TEST test_resize_size_max_fails(void);
 	TEST test_resize_random(void);
 
 	static int random_realloc(char **ptr_ptr, size_t *size_ptr, uint8_t buf[MCHEAP_SIZE], size_t new_size, void* (*realloc_func)(void*,size_t) );
@@ -146,6 +149,7 @@ SUITE(suite_defrag)
 	RUN_TEST(test_defrag_alloc_fail);
 	RUN_TEST(test_defrag_max_free);
 	RUN_TEST(test_defrag_intact);
+	RUN_TEST(test_defrag_size_max_fails);
 	RUN_TEST(test_defrag_random);
 }
 
@@ -158,6 +162,7 @@ SUITE(suite_evict)
 	RUN_TEST(test_evict_alloc_fail);
 	RUN_TEST(test_evict_max_free);
 	RUN_TEST(test_evict_intact);
+	RUN_TEST(test_evict_size_max_fails);
 	RUN_TEST(test_evict_random);
 }
 
@@ -171,6 +176,7 @@ SUITE(suite_resize)
 	RUN_TEST(test_resize_alloc_fail);
 	RUN_TEST(test_resize_max_free);
 	RUN_TEST(test_resize_intact);
+	RUN_TEST(test_resize_size_max_fails);
 	RUN_TEST(test_resize_random);
 }
 
@@ -305,6 +311,13 @@ TEST test_defrag_intact(void)
 	memset(c-16,0xFF, 16);	//break it
 	ASSERT(!mcheap_defrag_is_intact());
 
+	PASS();
+}
+
+TEST test_defrag_size_max_fails(void)
+{
+	mcheap_defrag_reinit();
+	ASSERT_EQ(NULL, mcheap_defrag_allocate(SIZE_MAX));
 	PASS();
 }
 
@@ -495,6 +508,13 @@ TEST test_evict_intact(void)
 	memset(c-16,0xFF, 16);	//break it
 	ASSERT(!mcheap_evict_is_intact());
 
+	PASS();
+}
+
+TEST test_evict_size_max_fails(void)
+{
+	mcheap_evict_reinit();
+	ASSERT_EQ(NULL, mcheap_evict_allocate(SIZE_MAX));
 	PASS();
 }
 
@@ -713,6 +733,13 @@ TEST test_resize_intact(void)
 	memset(c-16,0xFF, 16);	//break it
 	ASSERT(!mcheap_resize_is_intact());
 
+	PASS();
+}
+
+TEST test_resize_size_max_fails(void)
+{
+	mcheap_resize_reinit();
+	ASSERT_EQ(NULL, mcheap_resize_allocate(SIZE_MAX));
 	PASS();
 }
 

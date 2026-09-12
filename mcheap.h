@@ -858,6 +858,8 @@ static bool heap_test(void)
 // Ensure that size is aligned, AND that the used section will be large enough to return to the free list
 static size_t enforce_minimum_allocation_size(size_t sz)
 {
+	if(sz > MCHEAP_SIZE)
+		sz = MCHEAP_SIZE;
 	sz = align_size(sz);
 
 	if(sizeof(struct used_struct) + sz < sizeof(struct free_struct))

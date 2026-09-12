@@ -469,31 +469,28 @@ static void* reallocate(void* section, size_t new_size)
 	{
 		new_size = enforce_minimum_allocation_size(new_size);
 		used_ptr = container_of(section, struct used_struct, content);
-
-		// find space for new allocation
-		relocation_ptr = free_walk(new_size);
-
-		// relocate to a lower address? (1st preference to minimize fragmentation)
-		if(relocation_ptr && (void*)relocation_ptr < (void*)used_ptr)
-			new_used_ptr = relocate(relocation_ptr, used_ptr, new_size);
-
+	
+		if(new_size <= used_ptr->size)		//shrink in place? 1st preference
+				new_used_ptr = used_ptr;
+		else if(used_section_can_extend_up(used_ptr, new_size))	//extend up? 2nd preference
+		{
+			free_remove(SECTION_AFTER(used_ptr));
+			new_used_ptr = used_extend_up(used_ptr);
+		}
 		else
 		{
 			free_ptr = find_free_below(used_ptr); 
-			if(used_section_can_extend_down(free_ptr, used_ptr, new_size)) // 2nd preference
+			if(used_section_can_extend_down(free_ptr, used_ptr, new_size)) // extend down? 3rd preference
 			{
 				free_remove(free_ptr);
 				new_used_ptr = used_extend_down(free_ptr, used_ptr, new_size);
 			}
-			else if(new_size <= used_ptr->size)	//shrink in place? 3rd preference
-				new_used_ptr = used_ptr;
-			else if(used_section_can_extend_up(used_ptr, new_size))	//4th preference
+			else
 			{
-				free_remove(SECTION_AFTER(used_ptr));
-				new_used_ptr = used_extend_up(used_ptr);
-			}
-			else if(relocation_ptr)
-				new_used_ptr = relocate(relocation_ptr, used_ptr, new_size);	// 5th preference, relocate to higher address
+				relocation_ptr = free_walk(new_size);	//4th preference relocate entirely
+				if(relocation_ptr)
+					new_used_ptr = relocate(relocation_ptr, used_ptr, new_size);
+			};
 		};
 
 		// Shrink the new used section if possible

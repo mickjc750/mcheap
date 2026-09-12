@@ -93,7 +93,7 @@
 	TEST test_evict_realloc_lower(void);
 	TEST test_evict_realloc_dont_shrink_in_place(void);
 	TEST test_evict_realloc_dont_ext_down(void);
-	TEST test_evict_realloc_ext_up(void);
+	TEST test_evict_realloc_dont_ext_up(void);
 	TEST test_evict_realloc_higher(void);
 	TEST test_evict_alloc_fail(void);
 	TEST test_evict_max_free(void);
@@ -154,8 +154,7 @@ SUITE(suite_evict)
 	RUN_TEST(test_evict_realloc_lower);
 	RUN_TEST(test_evict_realloc_dont_shrink_in_place);
 	RUN_TEST(test_evict_realloc_dont_ext_down);
-	RUN_TEST(test_evict_realloc_ext_up);
-	RUN_TEST(test_evict_realloc_higher);
+	RUN_TEST(test_evict_realloc_dont_ext_up);
 	RUN_TEST(test_evict_alloc_fail);
 	RUN_TEST(test_evict_max_free);
 	RUN_TEST(test_evict_intact);
@@ -221,7 +220,7 @@ TEST test_defrag_realloc_ext_down(void)
 	clutter(d, 100);
 	memcpy(defrag_buffers[0], d, 100);
 	mcheap_defrag_free(c);
-	d = mcheap_defrag_reallocate(d, 100);	// should not extend down into c, should relocate to a 
+	d = mcheap_defrag_reallocate(d, 100);	// should extend down into c
 	ASSERT_EQ(d, c);
 	ASSERT_MEM_EQ(defrag_buffers[0], d, 100);
 	PASS();
@@ -421,44 +420,28 @@ TEST test_evict_realloc_dont_shrink_in_place(void)
 TEST test_evict_realloc_dont_ext_down(void)
 {
 	mcheap_evict_reinit();
-	char *a = mcheap_evict_allocate(20);
+	char *a = mcheap_evict_allocate(50);
 	char *b = mcheap_evict_allocate(100);
 	char *c;
 	clutter(b, 100);
 	memcpy(evict_buffers[0], b, 100);
 	mcheap_evict_free(a);
-	c = mcheap_evict_reallocate(b, 101);	// should not extend down into c, should relocate to a higher address
+	c = mcheap_evict_reallocate(b, 125);	// should not extend down into c, should relocate to a higher address
 	ASSERT(c > b);
 	ASSERT_MEM_EQ(evict_buffers[0], c, 100);
 	PASS();
 }
 
-TEST test_evict_realloc_ext_up(void)
+TEST test_evict_realloc_dont_ext_up(void)
 {
 	mcheap_evict_reinit();
 	char *a = mcheap_evict_allocate(100);
 	char *b;
 	clutter(a, 100);
 	memcpy(evict_buffers[0], a, 100);
-	b = mcheap_evict_reallocate(a, 200);	// should extend up
-	ASSERT_EQ(b, a);
+	b = mcheap_evict_reallocate(a, 200);	// should not extend up, should allocate above the existing allocation
+	ASSERT(b > a+100);
 	ASSERT_MEM_EQ(evict_buffers[0], b, 100);
-	PASS();
-}
-
-TEST test_evict_realloc_higher(void)
-{
-	mcheap_evict_reinit();
-			  mcheap_evict_allocate(100);
-	char *c = mcheap_evict_allocate(20);
-			  mcheap_evict_allocate(100);
-	char *d = mcheap_evict_allocate(100);
-	mcheap_evict_free(d);
-	clutter(c, 20);
-	memcpy(evict_buffers[0], c, 20);
-	c = mcheap_evict_reallocate(c, 50);	// should move to where d was
-	ASSERT_EQ(c, d);
-	ASSERT_MEM_EQ(evict_buffers[0], c, 20);
 	PASS();
 }
 
